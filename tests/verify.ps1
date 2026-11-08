@@ -24,6 +24,7 @@ function Kind {
         "docker:cli", "/tools/kind") + $Arguments)
 }
 try {
+    & (Join-Path $PSScriptRoot "helm-origins.ps1")
     Checked "docker" @("run", "--rm",
         "--mount", "type=volume,source=$tools,target=/tools",
         "-e", "CGO_ENABLED=0", "-e", "GOBIN=/tools",

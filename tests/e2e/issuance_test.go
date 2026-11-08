@@ -152,7 +152,7 @@ func TestCertManagerManualIssuanceAndRenewal(t *testing.T) {
 				}
 				cert, ca := testutil.Bundle(t, &snap.Request)
 				input, _ := json.Marshal(map[string]any{"certificate": cert, "chain": ca, "version": r.Version})
-				h := &httpapi.Server{Store: db, AuthHeader: "x-auth-request-email", Origin: "https://signet.example.com", UI: http.NotFoundHandler(), Live: c.Live}
+				h := &httpapi.Server{Store: db, AuthHeader: "x-auth-request-email", Origins: []string{"https://signet.example.com"}, UI: http.NotFoundHandler(), Live: c.Live}
 				request := httptest.NewRequest("POST", "/api/requests/"+r.UID+"/upload", bytes.NewReader(input))
 				request.Header.Set("x-auth-request-email", "operator@example.com")
 				request.Header.Set("Origin", "https://signet.example.com")

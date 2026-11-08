@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,9 +58,9 @@ func run() error {
 			return errors.New("issuer instance must specify exact kind, name, and correct namespace scope")
 		}
 	}
-	origin, err := url.Parse(os.Getenv("PUBLIC_ORIGIN"))
-	if err != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" {
-		return errors.New("PUBLIC_ORIGIN must be an HTTPS origin without path, credentials, query or fragment")
+	origins, err := publicOrigins(os.Getenv("PUBLIC_ORIGIN"), os.Getenv("PUBLIC_ORIGINS"))
+	if err != nil {
+		return err
 	}
 	header := os.Getenv("AUTH_HEADER")
 	if header == "" {
@@ -88,12 +89,48 @@ func run() error {
 	if uiDir == "" {
 		uiDir = "/app/ui"
 	}
-	handler := &httpapi.Server{Store: db, AuthHeader: header, Origin: origin.String(), UI: http.FileServer(http.Dir(uiDir)), Live: c.Live}
+	handler := &httpapi.Server{Store: db, AuthHeader: header, Origins: origins, UI: http.FileServer(http.Dir(uiDir)), Live: c.Live}
 	httpServer := &http.Server{Addr: ":8080", Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	if err := mgr.Add(&httpRunner{server: httpServer}); err != nil {
 		return err
 	}
 	return mgr.Start(ctx)
+}
+
+func publicOrigins(single, multiple string) ([]string, error) {
+	if single != "" && multiple != "" {
+		return nil, errors.New("configure only one of PUBLIC_ORIGIN and PUBLIC_ORIGINS")
+	}
+	var origins []string
+	if multiple != "" {
+		if err := json.Unmarshal([]byte(multiple), &origins); err != nil {
+			return nil, errors.New("PUBLIC_ORIGINS must be a nonempty JSON list of HTTPS origins")
+		}
+	} else if single != "" {
+		origins = []string{single}
+	}
+	if len(origins) == 0 {
+		return nil, errors.New("PUBLIC_ORIGIN or a nonempty PUBLIC_ORIGINS is required")
+	}
+	pattern := regexp.MustCompile(`^https://([a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?|\[[0-9a-fA-F:]+\])(:[0-9]{1,5})?$`)
+	seen := make(map[string]bool, len(origins))
+	for _, origin := range origins {
+		u, err := url.Parse(origin)
+		if err != nil || !pattern.MatchString(origin) || u.Hostname() == "" {
+			return nil, errors.New("public origins must be exact HTTPS origins without path, credentials, query, fragment or wildcard")
+		}
+		if port := u.Port(); port != "" {
+			n, err := strconv.Atoi(port)
+			if err != nil || n < 1 || n > 65535 {
+				return nil, errors.New("public origin port must be between 1 and 65535")
+			}
+		}
+		if seen[origin] {
+			return nil, errors.New("public origins must not contain duplicates")
+		}
+		seen[origin] = true
+	}
+	return origins, nil
 }
 
 type httpRunner struct {

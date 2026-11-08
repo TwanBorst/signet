@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/mail"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 type Server struct {
 	Store      *store.Store
 	AuthHeader string
-	Origin     string
+	Origins    []string
 	UI         http.Handler
 	Live       func(context.Context, store.Request) error
 }
@@ -104,7 +105,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.reject(w, r, "", actor, "http.method", 405, "method not allowed")
 			return
 		}
-		if r.Header.Get("Origin") != s.Origin || len(r.Header.Values("Origin")) != 1 ||
+		if r.Header.Get("Origin") == "" || !slices.Contains(s.Origins, r.Header.Get("Origin")) || len(r.Header.Values("Origin")) != 1 ||
 			r.Header.Get("X-Signet-CSRF") != "1" || len(r.Header.Values("X-Signet-CSRF")) != 1 ||
 			r.Header.Get("Content-Type") != "application/json" {
 			s.reject(w, r, uid, actor, "csrf", 403, "request origin, CSRF header, or content type is invalid")

@@ -35,8 +35,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.database.secretName | quote }}
                   key: url
+            {{- if .Values.publicOrigins }}
+            - name: PUBLIC_ORIGINS
+              value: {{ .Values.publicOrigins | toJson | quote }}
+            {{- else }}
             - name: PUBLIC_ORIGIN
               value: {{ .Values.publicOrigin | quote }}
+            {{- end }}
             - name: AUTH_HEADER
               value: {{ .Values.authHeader | quote }}
             - name: ISSUER_INSTANCES

@@ -47,6 +47,25 @@ networkPolicy:
 
 Save as `signet-values.yaml`, set real addresses/labels, then run:
 
+For two or more domains sharing the same backend, replace `publicOrigin` with:
+
+```yaml
+publicOrigins:
+  - https://signet.example.com
+  - https://signet.example.org
+```
+
+Configure either `publicOrigin` or `publicOrigins`, not both. Values must be
+exact HTTPS origins (optional port, no trailing slash, path or wildcard).
+Route both the UI and `/api` on each domain to the same Signet Service through
+trusted authenticating proxies. Apply the identity-header and network
+protections to every entry point. No UI rebuild, cross-domain API URL or CORS
+configuration is needed; requests, decisions and history are shared.
+For deployments without Helm, set `PUBLIC_ORIGINS` to a nonempty JSON array,
+for example `["https://signet.example.com","https://signet.example.org"]`.
+Existing `PUBLIC_ORIGIN` configurations remain supported; do not set both
+environment variables.
+
 Create the external Secrets in namespace `signet` first. This illustrates the
 URI and CA file path; use your secret-management tooling rather than committing
 real credentials. Percent-encode reserved characters in URI credentials.

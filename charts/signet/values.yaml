@@ -10,7 +10,9 @@ database:
   # Alternative to caConfigMap; the kubelet mounts this without API Secret access.
   caSecretName: ""
   caKey: ca.crt
+# Configure either a single origin or a list of exact HTTPS origins, not both.
 publicOrigin: ""
+publicOrigins: []
 authHeader: x-auth-request-email
 issuerInstances: []
 service:

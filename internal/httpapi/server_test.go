@@ -32,7 +32,7 @@ func TestAPIWorkflowAuditAndCSRF(t *testing.T) {
 	s := testutil.DB(t)
 	cr, _ := testutil.Request(t, "api")
 	testutil.Ensure(t, s, cr, api.IssuerSpec{}, "issuer-uid")
-	h := &httpapi.Server{Store: s, AuthHeader: "x-auth-request-email", Origin: "https://signet.example.com", UI: http.NotFoundHandler(), Live: func(context.Context, store.Request) error { return nil }}
+	h := &httpapi.Server{Store: s, AuthHeader: "x-auth-request-email", Origins: []string{"https://signet.example.com", "https://signet.example.org"}, UI: http.NotFoundHandler(), Live: func(context.Context, store.Request) error { return nil }}
 	send := func(method, path string, body any, origin, actor string) *httptest.ResponseRecorder {
 		var data []byte
 		if body != nil {
@@ -62,14 +62,31 @@ func TestAPIWorkflowAuditAndCSRF(t *testing.T) {
 	if w := send("GET", "/api/requests/api", nil, "", "operator@example.com"); bytes.Contains(w.Body.Bytes(), []byte("CERTIFICATE REQUEST")) {
 		t.Fatal("details exposed unaudited CSR")
 	}
-	if w := send("POST", "/api/requests/api/cancel", map[string]any{"version": 1, "reason": "No longer needed"}, "https://attacker.example", "operator@example.com"); w.Code != 403 {
-		t.Fatalf("CSRF %d", w.Code)
+	for _, origin := range []string{"", "null", "https://attacker.example", "http://signet.example.com", "https://signet.example.org.attacker.example", "https://signet.example.org/", "https://signet.example.org:444", "https://signet.example.com, https://signet.example.org"} {
+		if w := send("POST", "/api/requests/api/cancel", map[string]any{"version": 1, "reason": "No longer needed"}, origin, "operator@example.com"); w.Code != 403 {
+			t.Fatalf("CSRF origin %q: %d", origin, w.Code)
+		}
+	}
+	for _, headers := range []http.Header{
+		{"Origin": {"https://signet.example.com", "https://signet.example.org"}, "X-Signet-Csrf": {"1"}},
+		{"Origin": {"https://signet.example.org"}},
+		{"Origin": {"https://signet.example.org"}, "X-Signet-Csrf": {"1", "1"}},
+	} {
+		req := httptest.NewRequest("POST", "/api/requests/api/cancel", bytes.NewBufferString(`{"version":1,"reason":"No longer needed"}`))
+		req.Header = headers
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Auth-Request-Email", "operator@example.com")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != 403 {
+			t.Fatalf("ambiguous origin or missing/duplicate CSRF header: %d", w.Code)
+		}
 	}
 	if w := send("POST", "/api/requests/api/cancel", map[string]any{"version": 1, "reason": ""}, "https://signet.example.com", "operator@example.com"); w.Code != 400 {
 		t.Fatalf("reason %d", w.Code)
 	}
 	cert, ca := testutil.Bundle(t, cr)
-	if w := send("POST", "/api/requests/api/upload", map[string]any{"version": 1, "certificate": cert, "chain": ca}, "https://signet.example.com", "operator@example.com"); w.Code != 200 {
+	if w := send("POST", "/api/requests/api/upload", map[string]any{"version": 1, "certificate": cert, "chain": ca}, "https://signet.example.org", "operator@example.com"); w.Code != 200 {
 		t.Fatalf("upload %d %s", w.Code, w.Body)
 	}
 	if w := send("POST", "/api/requests/api/deny", map[string]any{"version": 1, "reason": "Late denial"}, "https://signet.example.com", "operator@example.com"); w.Code != 409 {

@@ -2,9 +2,20 @@
 {{- if and .Values.database.caConfigMap .Values.database.caSecretName -}}
 {{- fail "configure only one of database.caConfigMap and database.caSecretName" -}}
 {{- end -}}
-{{- $origin := required "publicOrigin is required" .Values.publicOrigin -}}
+{{- if and .Values.publicOrigin .Values.publicOrigins -}}
+{{- fail "configure only one of publicOrigin and publicOrigins" -}}
+{{- end -}}
+{{- $origins := .Values.publicOrigins -}}
+{{- if .Values.publicOrigin -}}{{- $origins = list .Values.publicOrigin -}}{{- end -}}
+{{- if not $origins -}}{{- fail "publicOrigin or nonempty publicOrigins is required" -}}{{- end -}}
+{{- range $origin := $origins -}}
 {{- if not (regexMatch "^https://([a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?|\\[[0-9a-fA-F:]+\\])(:[0-9]{1,5})?$" $origin) -}}
-{{- fail "publicOrigin must be an https origin without path, credentials, query, or fragment" -}}
+{{- fail "public origins must be exact https origins without path, credentials, query, fragment, or wildcard" -}}
+{{- end -}}
+{{- if regexMatch ":[0-9]+$" $origin -}}
+{{- $port := trimPrefix ":" (regexFind ":[0-9]+$" $origin) | int -}}
+{{- if or (lt $port 1) (gt $port 65535) -}}{{- fail "public origin port must be between 1 and 65535" -}}{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if not .Values.issuerInstances -}}{{- fail "issuerInstances must not be empty" -}}{{- end -}}
 {{- range .Values.issuerInstances -}}

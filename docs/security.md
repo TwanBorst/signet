@@ -16,10 +16,20 @@ boundary for application requests.
 
 All authenticated users can act on requests: Signet does not provide per-user
 roles. Restrict membership at the proxy. Mutating browser requests require
-`X-Signet-CSRF: 1` and a strict `Origin` match to `PUBLIC_ORIGIN`; protect
+`X-Signet-CSRF: 1` and a strict `Origin` match to the configured HTTPS allowlist
+(`PUBLIC_ORIGINS`, or legacy `PUBLIC_ORIGIN`); protect
 the proxy from rewriting or accepting untrusted Origin values. Use HTTPS at
 the external endpoint. Kubernetes and database administrators are trusted;
 they can bypass application controls or alter state and audit records.
+
+Allowlisted domains are equally trusted entry points to the same requests and
+audit history. Configure only domains you control, without wildcards. Each
+domain must authenticate users and strip/replace the identity header; preserve
+the browser's Origin header rather than rewriting it to an allowed value.
+Serve the UI and proxy `/api` on each domain to the same backend. Signet does
+not enable cross-origin CORS or share authentication cookies between domains;
+sessions are managed by each upstream. An origin allowlist does not enforce
+Host routing or replace the authentication/network trust boundary.
 
 Audit writes fail closed: do not approve or issue if audit persistence fails.
 PostgreSQL and Kubernetes are not a distributed atomic transaction; reconcile
