@@ -37,7 +37,24 @@ try {
         "--mount", "type=volume,source=$tools,target=/tools",
         "--mount", "type=bind,source=$artifacts,target=/artifacts",
         "docker:cli", "sh", "-c",
-        "/tools/kind get kubeconfig --name $cluster --internal > /artifacts/internal-kubeconfig")
+        "umask 077; /tools/kind get kubeconfig --name $cluster --internal > /artifacts/internal-kubeconfig")
+    if ($IsLinux) {
+        # kind runs as root in Docker; host clients need runner-owned credentials.
+        $hostUid = (& id -u).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Cannot determine runner UID" }
+        $hostGid = (& id -g).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Cannot determine runner GID" }
+        Checked "docker" @("run", "--rm",
+            "--mount", "type=bind,source=$artifacts,target=/artifacts",
+            "docker:cli", "sh", "-c",
+            "chown ${hostUid}:${hostGid} /artifacts/kubeconfig /artifacts/internal-kubeconfig && chmod 600 /artifacts/kubeconfig /artifacts/internal-kubeconfig")
+    }
+    # Detect inaccessible/empty credentials before running expensive test suites.
+    foreach ($name in @("kubeconfig", "internal-kubeconfig")) {
+        if ([string]::IsNullOrWhiteSpace([IO.File]::ReadAllText((Join-Path $artifacts $name)))) {
+            throw "Generated $name is empty"
+        }
+    }
     Checked "docker" @("run", "-d", "--name", $database, "--network", "kind",
         "-e", "POSTGRES_PASSWORD=signet-test-only", "-e", "POSTGRES_DB=signet", "postgres:17-alpine")
     $ready = $false
