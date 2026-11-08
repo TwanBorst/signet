@@ -1,0 +1,42 @@
+replicaCount: 1
+image:
+  repository: signet
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+database:
+  secretName: ""
+  # Optional ConfigMap containing the external database provider's CA certificate.
+  caConfigMap: ""
+  # Alternative to caConfigMap; the kubelet mounts this without API Secret access.
+  caSecretName: ""
+  caKey: ca.crt
+publicOrigin: ""
+authHeader: x-auth-request-email
+issuerInstances: []
+service:
+  port: 8080
+networkPolicy:
+  # Disable only for isolated smoke tests; removes the network trust boundary.
+  enabled: true
+  # Each entry must contain nonempty namespaceSelector and podSelector maps.
+  ingressFrom: []
+  postgres:
+    port: 5432
+    cidrs: []
+    # Optional paired namespaceSelector/podSelector for in-cluster PostgreSQL.
+    selector: {}
+  apiServer:
+    port: 443
+    cidrs: []
+  dns:
+    namespaceSelector:
+      kubernetes.io/metadata.name: kube-system
+    podSelector:
+      k8s-app: kube-dns
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

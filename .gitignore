@@ -1,0 +1,7 @@
+ui/node_modules/
+ui/dist/
+bin/
+*.test
+coverage*
+.env
+.verification/

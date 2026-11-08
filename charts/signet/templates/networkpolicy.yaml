@@ -1,0 +1,59 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "signet.name" . }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "signet.labels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- range .Values.networkPolicy.ingressFrom }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .podSelector | nindent 14 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dns.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dns.podSelector | nindent 14 }}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        {{- range .Values.networkPolicy.postgres.cidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+        {{- with .Values.networkPolicy.postgres.selector }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .podSelector | nindent 14 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.postgres.port }}
+    - to:
+        {{- range .Values.networkPolicy.apiServer.cidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.apiServer.port }}
+{{- end }}

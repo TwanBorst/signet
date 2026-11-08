@@ -1,0 +1,37 @@
+{{- $_ := required "database.secretName is required" .Values.database.secretName -}}
+{{- if and .Values.database.caConfigMap .Values.database.caSecretName -}}
+{{- fail "configure only one of database.caConfigMap and database.caSecretName" -}}
+{{- end -}}
+{{- $origin := required "publicOrigin is required" .Values.publicOrigin -}}
+{{- if not (regexMatch "^https://([a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?|\\[[0-9a-fA-F:]+\\])(:[0-9]{1,5})?$" $origin) -}}
+{{- fail "publicOrigin must be an https origin without path, credentials, query, or fragment" -}}
+{{- end -}}
+{{- if not .Values.issuerInstances -}}{{- fail "issuerInstances must not be empty" -}}{{- end -}}
+{{- range .Values.issuerInstances -}}
+  {{- if not (and (hasKey . "kind") (hasKey . "name") (hasKey . "namespace")) -}}
+    {{- fail "issuerInstances entries require kind, name, and namespace" -}}
+  {{- end -}}
+  {{- if not (and (kindIs "string" .name) (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" .name)) -}}
+    {{- fail "issuer name must be a DNS subdomain" -}}
+  {{- end -}}
+  {{- if eq .kind "SignetIssuer" -}}
+    {{- if not (and (kindIs "string" .namespace) (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" .namespace)) -}}
+      {{- fail "SignetIssuer namespace must be a DNS label" -}}
+    {{- end -}}
+  {{- else if eq .kind "SignetClusterIssuer" -}}
+    {{- if ne .namespace "" -}}{{- fail "SignetClusterIssuer namespace must be empty" -}}{{- end -}}
+  {{- else -}}{{- fail "issuer kind must be SignetIssuer or SignetClusterIssuer" -}}
+  {{- end -}}
+{{- end -}}
+{{- if .Values.networkPolicy.enabled -}}
+{{- if not .Values.networkPolicy.ingressFrom -}}{{- fail "networkPolicy.ingressFrom must identify trusted upstreams" -}}{{- end -}}
+{{- range .Values.networkPolicy.ingressFrom -}}
+  {{- if not (and .namespaceSelector .podSelector) -}}{{- fail "each ingressFrom entry requires nonempty namespaceSelector and podSelector" -}}{{- end -}}
+{{- end -}}
+{{- if not (or .Values.networkPolicy.postgres.cidrs .Values.networkPolicy.postgres.selector) -}}{{- fail "configure postgres CIDRs or selector" -}}{{- end -}}
+{{- with .Values.networkPolicy.postgres.selector -}}
+  {{- if not (and .namespaceSelector .podSelector) -}}{{- fail "postgres selector requires nonempty namespaceSelector and podSelector" -}}{{- end -}}
+{{- end -}}
+{{- if not .Values.networkPolicy.apiServer.cidrs -}}{{- fail "networkPolicy.apiServer.cidrs is required" -}}{{- end -}}
+{{- if not (and .Values.networkPolicy.dns.namespaceSelector .Values.networkPolicy.dns.podSelector) -}}{{- fail "DNS namespaceSelector and podSelector are required" -}}{{- end -}}
+{{- end -}}

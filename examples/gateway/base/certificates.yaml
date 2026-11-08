@@ -1,0 +1,25 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: example-com
+  namespace: edge
+spec:
+  secretName: example-com-tls
+  dnsNames: [example.com]
+  issuerRef:
+    group: signet.io
+    kind: SignetClusterIssuer
+    name: manual
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-example-com
+  namespace: edge
+spec:
+  secretName: wildcard-example-com-tls
+  dnsNames: ["*.example.com"]
+  issuerRef:
+    group: signet.io
+    kind: SignetClusterIssuer
+    name: manual

@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "signet.name" . }}
+  labels:
+    {{- include "signet.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "signet.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signet.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "signet.name" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: signet
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.secretName | quote }}
+                  key: url
+            - name: PUBLIC_ORIGIN
+              value: {{ .Values.publicOrigin | quote }}
+            - name: AUTH_HEADER
+              value: {{ .Values.authHeader | quote }}
+            - name: ISSUER_INSTANCES
+              value: {{ .Values.issuerInstances | toJson | quote }}
+            - name: UI_DIR
+              value: /app/ui
+          {{- if or .Values.database.caConfigMap .Values.database.caSecretName }}
+          volumeMounts:
+            - name: database-ca
+              mountPath: /etc/signet/db-ca
+              readOnly: true
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if or .Values.database.caConfigMap .Values.database.caSecretName }}
+      volumes:
+        - name: database-ca
+          {{- if .Values.database.caSecretName }}
+          secret:
+            secretName: {{ .Values.database.caSecretName | quote }}
+            items:
+              - key: {{ .Values.database.caKey | quote }}
+                path: ca.crt
+          {{- else }}
+          configMap:
+            name: {{ .Values.database.caConfigMap | quote }}
+            items:
+              - key: {{ .Values.database.caKey | quote }}
+                path: ca.crt
+          {{- end }}
+      {{- end }}

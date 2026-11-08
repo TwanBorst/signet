@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": {"type": "integer", "minimum": 1},
+    "authHeader": {"type": "string", "minLength": 3, "pattern": "^[xX]-[!#$%&'*+.^_`|~0-9A-Za-z-]+$"},
+    "database": {
+      "type": "object",
+      "properties": {
+        "secretName": {"type": "string"},
+        "caConfigMap": {"type": "string"},
+        "caSecretName": {"type": "string"},
+        "caKey": {"type": "string", "minLength": 1}
+      }
+    },
+    "publicOrigin": {"type": "string"},
+    "issuerInstances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "namespace"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {"enum": ["SignetIssuer", "SignetClusterIssuer"]},
+          "name": {"type": "string", "minLength": 1, "maxLength": 253},
+          "namespace": {"type": "string", "maxLength": 63}
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "ingressFrom": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/selectorPair"}
+        },
+        "postgres": {
+          "type": "object",
+          "properties": {
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "cidrs": {"$ref": "#/definitions/cidrs"},
+            "selector": {
+              "anyOf": [
+                {"type": "object", "maxProperties": 0},
+                {"$ref": "#/definitions/selectorPair"}
+              ]
+            }
+          }
+        },
+        "apiServer": {
+          "type": "object",
+          "properties": {
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "cidrs": {"$ref": "#/definitions/cidrs"}
+          }
+        },
+        "dns": {"$ref": "#/definitions/selectorPair"}
+      }
+    }
+  },
+  "definitions": {
+    "labels": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string"}
+    },
+    "selectorPair": {
+      "type": "object",
+      "required": ["namespaceSelector", "podSelector"],
+      "additionalProperties": false,
+      "properties": {
+        "namespaceSelector": {"$ref": "#/definitions/labels"},
+        "podSelector": {"$ref": "#/definitions/labels"}
+      }
+    },
+    "cidrs": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
