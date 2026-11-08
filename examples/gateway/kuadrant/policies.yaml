@@ -1,0 +1,42 @@
+apiVersion: kuadrant.io/v1
+kind: TLSPolicy
+metadata:
+  name: signet-edge
+  namespace: edge
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: signet-edge
+  issuerRef:
+    group: signet.io
+    kind: SignetClusterIssuer
+    name: manual
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: signet-auth
+  namespace: signet
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: signet
+  rules:
+    authentication:
+      oidc:
+        jwt:
+          issuerUrl: https://replace-with-your-oidc-issuer.example.com
+    authorization:
+      verified-email:
+        patternMatching:
+          patterns:
+            - predicate: auth.identity.email_verified == true
+    response:
+      success:
+        headers:
+          # Must match Signet's authHeader; injected after successful authorization.
+          x-auth-request-email:
+            plain:
+              expression: auth.identity.email

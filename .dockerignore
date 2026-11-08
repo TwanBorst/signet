@@ -1,0 +1,9 @@
+.git
+ui/node_modules
+ui/dist
+bin
+.env
+coverage*
+.verification
+.trivycache
+security-reports

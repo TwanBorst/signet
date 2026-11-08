@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: signet
+  labels:
+    gateway-access: signet

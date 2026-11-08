@@ -1,0 +1,8 @@
+Signet
+Copyright 2026 Signet contributors
+
+Licensed under the Apache License, Version 2.0.
+Dependencies retain their respective upstream licenses and notices.
+
+Portions are adapted from cert-manager/sample-external-issuer.
+Copyright 2023 The cert-manager Authors.

@@ -1,0 +1,50 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: signetissuers.signet.io
+spec:
+  group: signet.io
+  scope: Namespaced
+  names:
+    plural: signetissuers
+    singular: signetissuer
+    kind: SignetIssuer
+    listKind: SignetIssuerList
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                caBundle:
+                  type: string
+                  description: Optional PEM-encoded CA bundle.
+                dnsNames:
+                  type: array
+                  description: Optional DNS domain suffix allowlist.
+                  items:
+                    type: string
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items:
+                    type: object
+                    required: [type, status, lastTransitionTime, reason, message]
+                    properties:
+                      type: {type: string}
+                      status: {type: string, enum: ["True", "False", "Unknown"]}
+                      observedGeneration: {type: integer, format: int64, minimum: 0}
+                      lastTransitionTime: {type: string, format: date-time}
+                      reason: {type: string}
+                      message: {type: string}

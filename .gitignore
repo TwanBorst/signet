@@ -1,0 +1,9 @@
+ui/node_modules/
+ui/dist/
+bin/
+*.test
+coverage*
+.env
+.verification/
+.trivycache/
+/security-reports/

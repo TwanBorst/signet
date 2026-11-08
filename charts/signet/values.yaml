@@ -1,0 +1,53 @@
+replicaCount: 1
+image:
+  repository: ghcr.io/twanborst/signet
+  # Defaults to the packaged chart's appVersion; override for local/test images.
+  tag: ""
+  pullPolicy: IfNotPresent
+database:
+  # Required existing Secret in the release namespace containing the PostgreSQL URL.
+  secretName: ""
+  # Key in database.secretName supplying DATABASE_URL; never put credentials in values.
+  secretKey: url
+  # Optional ConfigMap containing the external database provider's CA certificate.
+  caConfigMap: ""
+  # Alternative to caConfigMap; the kubelet mounts this without API Secret access.
+  caSecretName: ""
+  # Key in the CA Secret/ConfigMap; mounted as /etc/signet/db-ca/ca.crt.
+  caKey: ca.crt
+# Configure either a single origin or a list of exact HTTPS origins, not both.
+publicOrigin: ""
+# Exact allowed HTTPS origins for multiple entry points; mutually exclusive with publicOrigin.
+publicOrigins: []
+# Trusted upstream identity header: one verified ASCII email; upstream must strip/replace it.
+authHeader: x-auth-request-email
+# Exact managed issuers: kind, name, namespace. Cluster issuers use namespace: "".
+# Example: [{kind: SignetIssuer, name: manual, namespace: team-a}]
+issuerInstances: []
+service:
+  port: 8080
+networkPolicy:
+  # Disable only for isolated smoke tests; removes the network trust boundary.
+  enabled: true
+  # Each entry must contain nonempty namespaceSelector and podSelector maps.
+  ingressFrom: []
+  postgres:
+    port: 5432
+    cidrs: []
+    # Optional paired namespaceSelector/podSelector for in-cluster PostgreSQL.
+    selector: {}
+  apiServer:
+    port: 443
+    cidrs: []
+  dns:
+    namespaceSelector:
+      kubernetes.io/metadata.name: kube-system
+    podSelector:
+      k8s-app: kube-dns
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

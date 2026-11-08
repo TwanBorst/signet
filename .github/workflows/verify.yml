@@ -1,0 +1,39 @@
+name: Verify
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  unit-and-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release strategy regression tests
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.19.0
+      - name: Isolated PostgreSQL and cert-manager matrix
+        shell: pwsh
+        run: ./tests/verify.ps1
+      - name: Build deployment image
+        run: docker build -t signet:verify .
+      - name: CVE and SBOM reports
+        uses: ./.github/actions/security-reports
+        with:
+          image: signet:verify
+      - name: Preserve CVE and SBOM reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ github.sha }}
+          path: security-reports/
+          if-no-files-found: warn
+          retention-days: 30
