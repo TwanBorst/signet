@@ -5,16 +5,24 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 database:
+  # Required existing Secret in the release namespace containing the PostgreSQL URL.
   secretName: ""
+  # Key in database.secretName supplying DATABASE_URL; never put credentials in values.
+  secretKey: url
   # Optional ConfigMap containing the external database provider's CA certificate.
   caConfigMap: ""
   # Alternative to caConfigMap; the kubelet mounts this without API Secret access.
   caSecretName: ""
+  # Key in the CA Secret/ConfigMap; mounted as /etc/signet/db-ca/ca.crt.
   caKey: ca.crt
 # Configure either a single origin or a list of exact HTTPS origins, not both.
 publicOrigin: ""
+# Exact allowed HTTPS origins for multiple entry points; mutually exclusive with publicOrigin.
 publicOrigins: []
+# Trusted upstream identity header: one verified ASCII email; upstream must strip/replace it.
 authHeader: x-auth-request-email
+# Exact managed issuers: kind, name, namespace. Cluster issuers use namespace: "".
+# Example: [{kind: SignetIssuer, name: manual, namespace: team-a}]
 issuerInstances: []
 service:
   port: 8080

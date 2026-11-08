@@ -27,7 +27,25 @@ optional illustration, not a complete authentication deployment: replace the
 OIDC issuer, configure and verify the identity proxy/header injection and
 stripping described in [security](../../docs/security.md), and verify that the
 selected Gateway integration enforces both policies before exposing Signet.
-The AuthPolicy alone does **not** establish Signet's trusted email header.
+The example's `response.success.headers.x-auth-request-email.plain.expression`
+copies `auth.identity.email` from the validated JWT into the upstream request
+header. Its authorization rule requires `email_verified == true`; configure
+the issuer's audience/claims and account membership requirements for your
+provider. Change the response header key if you change Signet's `authHeader`.
+The policy uses Bearer JWT credentials; it does not implement browser login or
+sessions, so a browser-facing authentication proxy must supply that flow.
+
+The header mapping alone does **not** establish the trust boundary. Configure
+your Gateway/auth integration to remove every client-supplied copy of
+`x-auth-request-email` and replace, rather than append, the successful auth
+response header. Verify filter ordering in your selected implementation;
+removing the header after authorization would also remove the trusted value.
+Do not map identity from request headers. Require fail-closed authorization,
+preserve Origin, and limit Signet's Service access to trusted proxies.
+Before deployment, test missing/invalid tokens, unverified/missing email claims,
+spoofed and duplicate identity headers, and successful `/api/me` identity.
+Signet itself rejects missing/malformed/ambiguous email values. Rendering this
+example does not verify real Gateway header replacement or OIDC reconciliation.
 Never run the explicit Certificate resources and TLSPolicy for the same
 listener Secrets simultaneously. See Kuadrant's
 [TLSPolicy reference](https://docs.kuadrant.io/1.5.x/kuadrant-operator/doc/reference/tlspolicy/)

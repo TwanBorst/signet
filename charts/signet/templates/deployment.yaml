@@ -34,7 +34,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.database.secretName | quote }}
-                  key: url
+                  key: {{ .Values.database.secretKey | quote }}
             {{- if .Values.publicOrigins }}
             - name: PUBLIC_ORIGINS
               value: {{ .Values.publicOrigins | toJson | quote }}
@@ -46,8 +46,6 @@ spec:
               value: {{ .Values.authHeader | quote }}
             - name: ISSUER_INSTANCES
               value: {{ .Values.issuerInstances | toJson | quote }}
-            - name: UI_DIR
-              value: /app/ui
           {{- if or .Values.database.caConfigMap .Values.database.caSecretName }}
           volumeMounts:
             - name: database-ca

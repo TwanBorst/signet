@@ -28,3 +28,15 @@ spec:
       oidc:
         jwt:
           issuerUrl: https://replace-with-your-oidc-issuer.example.com
+    authorization:
+      verified-email:
+        patternMatching:
+          patterns:
+            - predicate: auth.identity.email_verified == true
+    response:
+      success:
+        headers:
+          # Must match Signet's authHeader; injected after successful authorization.
+          x-auth-request-email:
+            plain:
+              expression: auth.identity.email

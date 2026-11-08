@@ -1,4 +1,5 @@
 {{- $_ := required "database.secretName is required" .Values.database.secretName -}}
+{{- $_ := required "database.secretKey is required" .Values.database.secretKey -}}
 {{- if and .Values.database.caConfigMap .Values.database.caSecretName -}}
 {{- fail "configure only one of database.caConfigMap and database.caSecretName" -}}
 {{- end -}}

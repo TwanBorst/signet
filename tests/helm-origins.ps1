@@ -17,6 +17,10 @@ function CheckOrigins {
 }
 
 CheckOrigins @("--set", "publicOrigin=https://signet.example.com") $true "name: PUBLIC_ORIGIN`n"
+CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
+    "--set", "database.secretKey=connection-string") $true 'key: "connection-string"'
+CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
+    "--set", "database.secretKey=") $false ""
 CheckOrigins @("--set-json", 'publicOrigins=["https://signet.example.com","https://signet.example.org:8443"]') $true 'value: "[\"https://signet.example.com\",\"https://signet.example.org:8443\"]"'
 CheckOrigins @() $false ""
 CheckOrigins @("--set", "publicOrigin=https://signet.example.com",

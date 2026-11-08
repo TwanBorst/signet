@@ -85,11 +85,7 @@ func run() error {
 	if err := c.Setup(ctx, mgr); err != nil {
 		return err
 	}
-	uiDir := os.Getenv("UI_DIR")
-	if uiDir == "" {
-		uiDir = "/app/ui"
-	}
-	handler := &httpapi.Server{Store: db, AuthHeader: header, Origins: origins, UI: http.FileServer(http.Dir(uiDir)), Live: c.Live}
+	handler := &httpapi.Server{Store: db, AuthHeader: header, Origins: origins, UI: http.FileServer(http.Dir("/app/ui")), Live: c.Live}
 	httpServer := &http.Server{Addr: ":8080", Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	if err := mgr.Add(&httpRunner{server: httpServer}); err != nil {
 		return err

@@ -18,6 +18,7 @@ Provision PostgreSQL separately, configure verified TLS, install cert-manager
 authentication proxy, a database, Gateway API, or Kuadrant.
 
 See [getting started](docs/getting-started.md),
+[runtime configuration](docs/configuration.md),
 [security boundary](docs/security.md), [operations](docs/operations.md),
 and [architecture](docs/architecture.md). Optional Gateway examples are in
 [`examples/gateway`](examples/gateway).
