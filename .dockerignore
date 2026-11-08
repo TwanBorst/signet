@@ -5,3 +5,5 @@ bin
 .env
 coverage*
 .verification
+.trivycache
+security-reports

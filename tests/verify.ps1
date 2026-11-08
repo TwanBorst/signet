@@ -75,7 +75,7 @@ try {
         "go test -race ./internal/... ./cmd/... ./api/... && cd third_party/issuer-lib && go test ./internal/ssaclient"))
     Checked "docker" @("run", "--rm",
         "--mount", "type=bind,source=$root,target=/src", "-w", "/src/ui",
-        "node:24", "sh", "-c", "npm ci && npm test -- --run && npm run build && npm audit --audit-level=moderate")
+        "node:24", "sh", "-c", "npm ci && npm test -- --run && npm run build && npm audit --audit-level=none")
     $kubeconfig = Join-Path $artifacts "kubeconfig"
     Checked "kubectl" @("--kubeconfig", $kubeconfig, "apply", "-f", (Join-Path $root "charts\signet\crds"))
     foreach ($version in $CertManagerVersions) {

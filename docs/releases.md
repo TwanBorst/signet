@@ -38,6 +38,43 @@ credentials:
 - GitHub Release `v0.1.0`: generated change notes, chart archive, image digest
   and `SHA256SUMS`; marked latest only after both packages publish successfully.
 
+## CVE and SBOM reports
+
+Verification and release workflows use pinned Trivy tooling to generate:
+
+- `image.cdx.json`: CycloneDX SBOM of the final container, including OS packages
+  and discoverable Go modules.
+- `source.cdx.json`: source dependency inventory, including npm lockfile
+  dependencies that are not discoverable in the compiled UI. Development/test
+  dependencies are included; it is not a list of runtime-only frontend packages.
+- `image-vulnerabilities.json` / `.sarif` and
+  `source-vulnerabilities.json` / `.sarif`: known vulnerability findings at all
+  reported severities, including findings with no available fix.
+- `scanner-version.txt` and `scanned-image.txt`: scanner/database metadata and
+  the inspected image reference.
+
+**Policy is report-only:** known CVEs do not block verification or publication,
+but scanner/database/download errors fail the workflow. No vulnerability
+exceptions or blanket suppression list is applied. The existing npm audit check
+also reports findings without a severity gate (`--audit-level=none`).
+PR/main reports are retained
+as Actions artifacts for 30 days, release reports for 90 days. GitHub Releases
+also attach the reports and SBOMs with checksums for durable download.
+SARIF is supplied as a file, not uploaded to GitHub code scanning; this works
+without additional security-event permissions or code-scanning entitlements.
+
+Release image reports inspect the published immutable digest, not a mutable
+tag. Reports are snapshots of the vulnerability database at scan time, not a
+guarantee of safety or continuous monitoring. Source and image scans run locally
+in the runner; no source upload to a scanning service is configured. The Helm
+chart packages configuration, not runtime dependencies; the matching image and
+source SBOMs cover its application, not cert-manager or other platform services.
+SBOMs are release assets, not signed attestations or OCI referrers.
+
+The release image is uploaded before its digest scan; scanner failures can
+therefore leave an image without a completed release. The partial-publication
+recovery procedure below still applies. Review reports before deployment.
+
 Only exact version tags are published; there are no mutable `latest` or minor
 aliases. Release jobs are serialized. Treat tags and published artifacts as
 immutable: do not move tags, delete version tags or rebuild them with different
