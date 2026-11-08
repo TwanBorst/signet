@@ -6,4 +6,4 @@ coverage*
 .env
 .verification/
 .trivycache/
-security-reports/
+/security-reports/

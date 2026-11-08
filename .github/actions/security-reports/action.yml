@@ -1,0 +1,54 @@
+name: CVE and SBOM reports
+description: Generate report-only vulnerability findings and CycloneDX inventories.
+inputs:
+  image:
+    description: Local image tag or immutable registry digest to inspect.
+    required: true
+  output:
+    description: Report directory, relative to the repository root.
+    default: security-reports
+runs:
+  using: composite
+  steps:
+    - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+      with:
+        version: v0.76.2
+        cache: true
+    - name: Generate image and source inventories and CVE reports
+      shell: bash
+      env:
+        REPORT_IMAGE: ${{ inputs.image }}
+        REPORT_DIR: ${{ inputs.output }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$REPORT_DIR"
+        printf '%s\n' "$REPORT_IMAGE" > "$REPORT_DIR/scanned-image.txt"
+        # Exit zero for findings, but preserve operational failures.
+        trivy image --scanners vuln --exit-code 0 --format json \
+          --output "$REPORT_DIR/image-vulnerabilities.json" "$REPORT_IMAGE"
+        trivy convert --format sarif --output "$REPORT_DIR/image-vulnerabilities.sarif" \
+          "$REPORT_DIR/image-vulnerabilities.json"
+        trivy image --format cyclonedx --output "$REPORT_DIR/image.cdx.json" "$REPORT_IMAGE"
+        # The compiled UI has no npm manifest; inventory and scan source dependencies too.
+        trivy fs --scanners vuln --include-dev-deps --exit-code 0 --skip-dirs .git,.verification,ui/node_modules,ui/dist,dist,"$REPORT_DIR" \
+          --format json --output "$REPORT_DIR/source-vulnerabilities.json" .
+        trivy convert --format sarif --output "$REPORT_DIR/source-vulnerabilities.sarif" \
+          "$REPORT_DIR/source-vulnerabilities.json"
+        trivy fs --format cyclonedx --include-dev-deps --skip-dirs .git,.verification,ui/node_modules,ui/dist,dist,"$REPORT_DIR" \
+          --output "$REPORT_DIR/source.cdx.json" .
+        trivy --version > "$REPORT_DIR/scanner-version.txt"
+        {
+          echo "## CVE reports and SBOMs"
+          echo "Policy: report only; vulnerability findings do not block publication."
+          echo "Image: \`$REPORT_IMAGE\`"
+          echo "CycloneDX inventories and JSON/SARIF findings are attached as workflow artifacts."
+          for report in image source; do
+            echo "### $report findings (package-level occurrences)"
+            echo '| Severity | Count |'
+            echo '| --- | --- |'
+            jq -r '[.Results[]? | .Vulnerabilities[]?] as $v |
+              ["CRITICAL","HIGH","MEDIUM","LOW","UNKNOWN"][] as $s |
+              "| \($s) | \([$v[] | select(.Severity == $s)] | length) |"' \
+              "$REPORT_DIR/$report-vulnerabilities.json"
+          done
+        } >> "$GITHUB_STEP_SUMMARY"
