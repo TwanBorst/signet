@@ -22,6 +22,11 @@ See [getting started](docs/getting-started.md),
 and [architecture](docs/architecture.md). Optional Gateway examples are in
 [`examples/gateway`](examples/gateway).
 
+Tagged releases publish a versioned [container image](https://ghcr.io/twanborst/signet),
+an OCI chart at `oci://ghcr.io/twanborst/charts/signet`, and a GitHub Release
+with the chart archive and checksums. See [release strategy](docs/releases.md)
+for SemVer, publishing and installation instructions.
+
 **Do not expose the Service directly to users.** An upstream authentication
 service must strip and replace the configured identity header. All authenticated
 users may act. Audit-dependent operations fail closed if PostgreSQL is

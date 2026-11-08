@@ -31,3 +31,25 @@ foreach ($origin in @("http://signet.example.com", "https://*.example.com",
     CheckOrigins @("--set-json", "publicOrigins=$json") $false ""
 }
 Write-Output "Helm single/multiple origin configuration and rejection checks passed."
+
+$destination = Join-Path (Join-Path $PSScriptRoot "..\.verification") ("chart-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $destination -Force | Out-Null
+$archive = Join-Path $destination "signet-0.2.3.tgz"
+try {
+    & helm package $chart --version 0.2.3 --app-version 0.2.3 --destination $destination
+    if ($LASTEXITCODE -ne 0) { throw "Chart packaging failed" }
+    $metadata = & helm show chart $archive | Out-String
+    if ($LASTEXITCODE -ne 0 -or $metadata -notmatch '(?m)^version: 0\.2\.3\r?$' -or $metadata -notmatch '(?m)^appVersion: "?0\.2\.3"?\r?$') {
+        throw "Packaged chart version does not match release"
+    }
+    $original = $common[2]
+    $common[2] = $archive
+    CheckOrigins @("--set", "publicOrigin=https://signet.example.com") $true 'image: "ghcr.io/twanborst/signet:0.2.3"'
+    CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
+        "--set", "image.repository=signet", "--set", "image.tag=local") $true 'image: "signet:local"'
+    $common[2] = $original
+} finally {
+    Remove-Item -LiteralPath $archive -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $destination
+}
+Write-Output "Packaged chart version and default/override image checks passed."

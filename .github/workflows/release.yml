@@ -1,0 +1,90 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+concurrency:
+  group: signet-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+      image: ${{ steps.release.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate version and verified main commit
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/release.py
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      IMAGE: ${{ needs.prepare.outputs.image }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.19.0
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and publish versioned image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.sha }}
+      - name: Package and publish OCI chart
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/pulled
+          helm package charts/signet --version "$VERSION" --app-version "$VERSION" --destination dist
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm push "dist/signet-$VERSION.tgz" "oci://${IMAGE%/*}/charts"
+          helm pull "oci://${IMAGE%/*}/charts/signet" --version "$VERSION" --destination dist/pulled
+          cmp "dist/signet-$VERSION.tgz" "dist/pulled/signet-$VERSION.tgz"
+          printf '%s@%s\n' "$IMAGE" "$IMAGE_DIGEST" > dist/image-digest.txt
+          (cd dist && sha256sum "signet-$VERSION.tgz" image-digest.txt > SHA256SUMS)
+          {
+            printf 'Container: `%s:%s` (linux/amd64)\n\n' "$IMAGE" "$VERSION"
+            printf 'Image digest: `%s`\n\n' "$IMAGE_DIGEST"
+            printf 'Helm chart: `oci://%s/charts/signet`, version `%s`\n\n' "${IMAGE%/*}" "$VERSION"
+            printf 'Install with your configured database, authentication and network values:\n\n'
+            printf '```sh\nhelm upgrade --install signet oci://%s/charts/signet --version %s --namespace signet --create-namespace -f signet-values.yaml\n```\n' "${IMAGE%/*}" "$VERSION"
+          } > dist/notes.md
+      - name: Create GitHub Release
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" --verify-tag --title "Signet $VERSION" \
+            --generate-notes --notes-file dist/notes.md --latest \
+            "dist/signet-$VERSION.tgz" dist/image-digest.txt dist/SHA256SUMS

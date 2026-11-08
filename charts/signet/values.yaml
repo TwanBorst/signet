@@ -1,7 +1,8 @@
 replicaCount: 1
 image:
-  repository: signet
-  tag: "0.1.0"
+  repository: ghcr.io/twanborst/signet
+  # Defaults to the packaged chart's appVersion; override for local/test images.
+  tag: ""
   pullPolicy: IfNotPresent
 database:
   secretName: ""
