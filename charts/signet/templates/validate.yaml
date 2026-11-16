@@ -1,5 +1,15 @@
-{{- $_ := required "database.secretName is required" .Values.database.secretName -}}
+{{- if .Values.database.secretName -}}
+{{- if or .Values.database.host .Values.database.name .Values.database.username .Values.database.passwordSecretName -}}
+{{- fail "configure database.secretName or individual database settings, not both" -}}
+{{- end -}}
 {{- $_ := required "database.secretKey is required" .Values.database.secretKey -}}
+{{- else -}}
+{{- $_ := required "database.host is required" .Values.database.host -}}
+{{- $_ := required "database.name is required" .Values.database.name -}}
+{{- $_ := required "database.username is required" .Values.database.username -}}
+{{- $_ := required "database.passwordSecretName is required" .Values.database.passwordSecretName -}}
+{{- $_ := required "database.passwordSecretKey is required" .Values.database.passwordSecretKey -}}
+{{- end -}}
 {{- if and .Values.database.caConfigMap .Values.database.caSecretName -}}
 {{- fail "configure only one of database.caConfigMap and database.caSecretName" -}}
 {{- end -}}

@@ -9,6 +9,12 @@
       "properties": {
         "secretName": {"type": "string"},
         "secretKey": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9._-]+$"},
+        "host": {"type": "string"},
+        "name": {"type": "string"},
+        "username": {"type": "string"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "passwordSecretName": {"type": "string"},
+        "passwordSecretKey": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9._-]+$"},
         "caConfigMap": {"type": "string"},
         "caSecretName": {"type": "string"},
         "caKey": {"type": "string", "minLength": 1}

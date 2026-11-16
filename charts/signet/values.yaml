@@ -5,10 +5,18 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 database:
-  # Required existing Secret in the release namespace containing the PostgreSQL URL.
+  # Existing Secret containing the PostgreSQL URL; mutually exclusive with individual settings.
   secretName: ""
   # Key in database.secretName supplying DATABASE_URL; never put credentials in values.
   secretKey: url
+  # Alternatively configure these individual settings and an existing password Secret.
+  host: ""
+  name: ""
+  username: ""
+  # Used only with individual settings; ignored when secretName provides DATABASE_URL.
+  port: 5432
+  passwordSecretName: ""
+  passwordSecretKey: password
   # Optional ConfigMap containing the external database provider's CA certificate.
   caConfigMap: ""
   # Alternative to caConfigMap; the kubelet mounts this without API Secret access.

@@ -8,7 +8,13 @@ These are all Signet application environment variables:
 
 | Variable | Helm value | Required/default | Meaning |
 | --- | --- | --- | --- |
-| `DATABASE_URL` | `database.secretName` + `database.secretKey` | Required; key defaults to `url` | PostgreSQL connection URI from an existing Secret in the release namespace. Must use `sslmode=verify-full`. Configure `sslrootcert=/etc/signet/db-ca/ca.crt` when using the chart's CA mount. Never include credentials in values or logs. |
+| `DATABASE_URL` | `database.secretName` + `database.secretKey` | Alternative to individual settings; key defaults to `url` | PostgreSQL connection URI from an existing Secret in the release namespace. Must use `sslmode=verify-full`. Configure `sslrootcert=/etc/signet/db-ca/ca.crt` when using the chart's CA mount. Never include credentials in values or logs. |
+| `DATABASE_HOST` | `database.host` | Required for individual settings | PostgreSQL hostname or IP address, matching the server certificate. |
+| `DATABASE_NAME` | `database.name` | Required for individual settings | Database name. |
+| `DATABASE_USERNAME` | `database.username` | Required for individual settings | Database role. |
+| `DATABASE_PASSWORD` | `database.passwordSecretName` + `database.passwordSecretKey` | Required for individual settings; key defaults to `password` | Password from an existing Secret in the release namespace, not Helm values. |
+| `DATABASE_PORT` | `database.port` | `5432` in individual-settings mode | PostgreSQL port; ignored when using `DATABASE_URL`. Configure `networkPolicy.postgres.port` separately to match. |
+| `DATABASE_SSLROOTCERT` | `database.caSecretName` or `database.caConfigMap` | Optional | CA certificate file path for individual settings; the chart sets it automatically when mounting a CA. |
 | `PUBLIC_ORIGIN` | `publicOrigin` | Required unless using `PUBLIC_ORIGINS` | Single exact HTTPS origin, without path/trailing slash, credentials, query or fragment. |
 | `PUBLIC_ORIGINS` | `publicOrigins` | Required unless using `PUBLIC_ORIGIN` | Nonempty JSON array of exact HTTPS origins for mutation CSRF validation. No wildcards/duplicates; cannot be set together with `PUBLIC_ORIGIN`. Helm serializes the list automatically. |
 | `AUTH_HEADER` | `authHeader` | `x-auth-request-email` | Custom `x-` header name containing exactly one verified ASCII email identity, supplied by the trusted authenticating upstream. |
@@ -25,7 +31,9 @@ AUTH_HEADER=x-auth-request-email
 `database.caSecretName` or `database.caConfigMap` optionally selects an existing
 CA source in the release namespace; configure only one. `database.caKey`
 selects its key (default `ca.crt`), always mounted as `/etc/signet/db-ca/ca.crt`.
-This is independent of the database URL key. The application has no Kubernetes
+This is independent of the database credential Secret. Individual settings
+always use `sslmode=verify-full`; do not combine them with `DATABASE_URL`.
+The application has no Kubernetes
 Secret read permission: the kubelet supplies both the environment and volume.
 
 See [getting started](getting-started.md) for complete Helm values and
