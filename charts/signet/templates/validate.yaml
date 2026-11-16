@@ -1,5 +1,5 @@
 {{- if .Values.database.secretName -}}
-{{- if or .Values.database.host .Values.database.name .Values.database.username .Values.database.passwordSecretName (ne (int .Values.database.port) 5432) -}}
+{{- if or .Values.database.host .Values.database.name .Values.database.username .Values.database.passwordSecretName -}}
 {{- fail "configure database.secretName or individual database settings, not both" -}}
 {{- end -}}
 {{- $_ := required "database.secretKey is required" .Values.database.secretKey -}}

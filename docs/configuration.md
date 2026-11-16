@@ -13,7 +13,7 @@ These are all Signet application environment variables:
 | `DATABASE_NAME` | `database.name` | Required for individual settings | Database name. |
 | `DATABASE_USERNAME` | `database.username` | Required for individual settings | Database role. |
 | `DATABASE_PASSWORD` | `database.passwordSecretName` + `database.passwordSecretKey` | Required for individual settings; key defaults to `password` | Password from an existing Secret in the release namespace, not Helm values. |
-| `DATABASE_PORT` | `database.port` | `5432` | PostgreSQL port; configure `networkPolicy.postgres.port` separately to match. |
+| `DATABASE_PORT` | `database.port` | `5432` in individual-settings mode | PostgreSQL port; ignored when using `DATABASE_URL`. Configure `networkPolicy.postgres.port` separately to match. |
 | `DATABASE_SSLROOTCERT` | `database.caSecretName` or `database.caConfigMap` | Optional | CA certificate file path for individual settings; the chart sets it automatically when mounting a CA. |
 | `PUBLIC_ORIGIN` | `publicOrigin` | Required unless using `PUBLIC_ORIGINS` | Single exact HTTPS origin, without path/trailing slash, credentials, query or fragment. |
 | `PUBLIC_ORIGINS` | `publicOrigins` | Required unless using `PUBLIC_ORIGIN` | Nonempty JSON array of exact HTTPS origins for mutation CSRF validation. No wildcards/duplicates; cannot be set together with `PUBLIC_ORIGIN`. Helm serializes the list automatically. |

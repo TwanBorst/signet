@@ -13,6 +13,7 @@ database:
   host: ""
   name: ""
   username: ""
+  # Used only with individual settings; ignored when secretName provides DATABASE_URL.
   port: 5432
   passwordSecretName: ""
   passwordSecretKey: password

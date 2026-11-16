@@ -22,7 +22,7 @@ CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
 CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
     "--set", "database.secretKey=") $false ""
 CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
-    "--set", "database.port=5433") $false ""
+    "--set", "database.port=5433") $true 'name: DATABASE_URL'
 $individual = @("--set", "database.secretName=", "--set", "database.host=db.example.com",
     "--set", "database.name=signet", "--set", "database.username=signet",
     "--set", "database.passwordSecretName=db-password", "--set", "database.passwordSecretKey=passwd",
