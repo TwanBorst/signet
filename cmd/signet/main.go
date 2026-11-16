@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,13 +28,9 @@ import (
 
 func run() error {
 	ctx := ctrl.SetupSignalHandler()
-	config, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
+	config, err := databaseConfig()
 	if err != nil {
-		return errors.New("invalid DATABASE_URL configuration (value suppressed)")
-	}
-	u, err := url.Parse(os.Getenv("DATABASE_URL"))
-	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Query().Get("sslmode") != "verify-full" || config.ConnConfig.TLSConfig == nil {
-		return errors.New("DATABASE_URL must use postgres URI and sslmode=verify-full with a trusted database CA")
+		return err
 	}
 	config.MaxConns = 10
 	config.ConnConfig.ConnectTimeout = 10 * time.Second
@@ -91,6 +88,54 @@ func run() error {
 		return err
 	}
 	return mgr.Start(ctx)
+}
+
+func databaseConfig() (*pgxpool.Config, error) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	host, name, user := os.Getenv("DATABASE_HOST"), os.Getenv("DATABASE_NAME"), os.Getenv("DATABASE_USERNAME")
+	password, port, rootCert := os.Getenv("DATABASE_PASSWORD"), os.Getenv("DATABASE_PORT"), os.Getenv("DATABASE_SSLROOTCERT")
+	if databaseURL != "" {
+		if host != "" || name != "" || user != "" || password != "" || port != "" || rootCert != "" {
+			return nil, errors.New("configure DATABASE_URL or individual DATABASE settings, not both")
+		}
+	} else {
+		if host == "" || name == "" || user == "" || password == "" {
+			return nil, errors.New("DATABASE_HOST, DATABASE_NAME, DATABASE_USERNAME and DATABASE_PASSWORD are required")
+		}
+		if net.ParseIP(host) == nil && !regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$`).MatchString(host) {
+			return nil, errors.New("DATABASE_HOST must be a hostname or IP address")
+		}
+		if port == "" {
+			port = "5432"
+		}
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return nil, errors.New("DATABASE_PORT must be between 1 and 65535")
+		}
+		u := &url.URL{
+			Scheme: "postgresql",
+			User:   url.UserPassword(user, password),
+			Host:   net.JoinHostPort(host, port),
+		}
+		query := url.Values{"sslmode": {"verify-full"}, "dbname": {name}}
+		if rootCert != "" {
+			query.Set("sslrootcert", rootCert)
+		}
+		u.RawQuery = query.Encode()
+		databaseURL = u.String()
+	}
+	u, err := url.Parse(databaseURL)
+	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Query().Get("sslmode") != "verify-full" {
+		return nil, errors.New("DATABASE_URL must use postgres URI and sslmode=verify-full with a trusted database CA")
+	}
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, errors.New("invalid database configuration (value suppressed)")
+	}
+	if config.ConnConfig.TLSConfig == nil {
+		return nil, errors.New("database requires sslmode=verify-full with a trusted database CA")
+	}
+	return config, nil
 }
 
 func publicOrigins(single, multiple string) ([]string, error) {

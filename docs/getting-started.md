@@ -4,8 +4,9 @@ Install cert-manager 1.20 or newer, a cluster with a NetworkPolicy-enforcing
 CNI, and an external PostgreSQL database. The database is independent of the
 release and retains issuance history and audit records indefinitely. Provision
 its least-privilege role and an external Secret in Signet's namespace with a
-`url` key containing the connection URL; `database.secretKey` can select a
-different key. Never put the password in Helm values.
+`url` key containing the connection URL, or configure individual settings and
+a password Secret as described below. `database.secretKey` can select a
+different URL key. Never put the password in Helm values.
 `DATABASE_URL` strictly requires `sslmode=verify-full`; other modes are rejected.
 Supply an external provider CA using `database.caSecretName` or
 `database.caConfigMap` (not both); `database.caKey` defaults to `ca.crt`.
@@ -19,7 +20,7 @@ Example values (replace all placeholders and use a built/published image):
 ```yaml
 image:
   repository: registry.example.com/signet
-  tag: "0.1.0"
+  tag: "0.2.0"
 database:
   secretName: signet-db
   secretKey: url
@@ -97,6 +98,25 @@ The CA Secret mount is optional if the provider CA is already trusted by the
 image and the URL references an available trust file. Mounting Secrets does
 not grant the application Kubernetes API Secret read permissions.
 
+Instead of the URL Secret, use individual connection settings:
+
+```yaml
+database:
+  host: db.example.com
+  name: signet
+  username: signet
+  port: 5432
+  passwordSecretName: signet-db-password
+  passwordSecretKey: password
+  caSecretName: postgres-provider-ca
+```
+
+Create `signet-db-password` in the release namespace with a `password` key
+using your secret-management tooling. Do not set `database.secretName` in this
+mode. The chart automatically uses the mounted CA for verified TLS; reserved
+characters in the password need no URI encoding. If changing the database
+port, also set `networkPolicy.postgres.port` to allow that port.
+
 ```sh
 helm upgrade --install signet ./charts/signet --namespace signet \
   --create-namespace -f signet-values.yaml
@@ -136,7 +156,7 @@ spec:
 empty namespace. `dnsNames` is an optional DNS domain suffix allowlist;
 `caBundle` is optional inline PEM. Configure the instances before creating
 CertificateRequests and update the release when changing them. The chart
-requires explicit issuer identities, an HTTPS origin, a database Secret name,
+requires explicit issuer identities, an HTTPS origin, database configuration,
 trusted ingress peers, PostgreSQL egress and API-server CIDRs.
 
 The application container performs database migrations automatically at

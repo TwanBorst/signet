@@ -21,6 +21,23 @@ CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
     "--set", "database.secretKey=connection-string") $true 'key: "connection-string"'
 CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
     "--set", "database.secretKey=") $false ""
+CheckOrigins @("--set", "publicOrigin=https://signet.example.com",
+    "--set", "database.port=5433") $false ""
+$individual = @("--set", "database.secretName=", "--set", "database.host=db.example.com",
+    "--set", "database.name=signet", "--set", "database.username=signet",
+    "--set", "database.passwordSecretName=db-password", "--set", "database.passwordSecretKey=passwd",
+    "--set", "database.port=5433", "--set", "database.caSecretName=db-ca",
+    "--set", "publicOrigin=https://signet.example.com")
+foreach ($expected in @('name: DATABASE_HOST', 'value: "db.example.com"', 'name: DATABASE_NAME',
+    'name: DATABASE_USERNAME', 'name: DATABASE_PORT', 'value: "5433"', 'name: DATABASE_PASSWORD',
+    'name: "db-password"', 'key: "passwd"', 'name: DATABASE_SSLROOTCERT',
+    'value: /etc/signet/db-ca/ca.crt')) {
+    CheckOrigins $individual $true $expected
+}
+CheckOrigins ($individual + @("--set", "database.secretName=test-db")) $false ""
+CheckOrigins ($individual + @("--set", "database.username=")) $false ""
+CheckOrigins ($individual + @("--set", "database.passwordSecretName=")) $false ""
+CheckOrigins ($individual + @("--set", "database.port=65536")) $false ""
 CheckOrigins @("--set-json", 'publicOrigins=["https://signet.example.com","https://signet.example.org:8443"]') $true 'value: "[\"https://signet.example.com\",\"https://signet.example.org:8443\"]"'
 CheckOrigins @() $false ""
 CheckOrigins @("--set", "publicOrigin=https://signet.example.com",

@@ -40,7 +40,7 @@ The chart does not grant Secret access or native `certificates.k8s.io` CSR
 permissions. Signer approvals are limited to configured exact issuer
 identities; review any other cert-manager approver policies independently.
 
-`DATABASE_URL` strictly requires `sslmode=verify-full` with a trusted externally supplied provider CA
+Database connections strictly require `sslmode=verify-full` with a trusted externally supplied provider CA
 and matching server hostname. Keep credentials in an external Secret, grant
 the database role only the access required to operate and migrate Signet's
 database, and protect the credentials and CA Secret/ConfigMap from untrusted changes.
