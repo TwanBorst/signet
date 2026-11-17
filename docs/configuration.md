@@ -18,18 +18,23 @@ These are all Signet application environment variables:
 | `PUBLIC_ORIGIN` | `publicOrigin` | Required unless using `PUBLIC_ORIGINS` | Single exact HTTPS origin, without path/trailing slash, credentials, query or fragment. |
 | `PUBLIC_ORIGINS` | `publicOrigins` | Required unless using `PUBLIC_ORIGIN` | Nonempty JSON array of exact HTTPS origins for mutation CSRF validation. No wildcards/duplicates; cannot be set together with `PUBLIC_ORIGIN`. Helm serializes the list automatically. |
 | `AUTH_HEADER` | `authHeader` | `x-auth-request-email` | Custom `x-` header name containing exactly one verified ASCII email identity, supplied by the trusted authenticating upstream. |
-| `ISSUER_INSTANCES` | `issuerInstances` | Required nonempty JSON array | Exact managed issuer identities, each with `kind`, `name`, `namespace`. Kind is `SignetIssuer` or `SignetClusterIssuer`; namespaced issuers need a namespace, cluster issuers require `""`. Only these identities receive scoped signer approval RBAC. |
+| `DEPLOYMENT_MODE` | `deployment.mode` | Required at runtime; chart defaults to `namespace` | `namespace` manages all SignetIssuers in one namespace; `cluster` manages both issuer kinds throughout the cluster. |
+| `WATCH_NAMESPACE` | `deployment.namespace` | Required at runtime for namespace mode; chart defaults to the release namespace | Exact namespace to watch in namespace mode. Must be unset/empty in cluster mode. |
 
 For a deployment outside Helm, for example:
 
 ```text
-ISSUER_INSTANCES=[{"kind":"SignetClusterIssuer","name":"manual","namespace":""},{"kind":"SignetIssuer","name":"team","namespace":"team-a"}]
+DEPLOYMENT_MODE=namespace
+WATCH_NAMESPACE=team-a
 PUBLIC_ORIGINS=["https://signet.example.com","https://signet.example.org"]
 AUTH_HEADER=x-auth-request-email
 ```
 
 See [issuer configuration](issuers.md) for `SignetIssuer` and
 `SignetClusterIssuer` manifests, policy fields, and Certificate references.
+That guide also describes scope-specific RBAC and migration from the removed
+`issuerInstances` / `ISSUER_INSTANCES` allowlist. For a non-Helm cluster-wide
+deployment, set `DEPLOYMENT_MODE=cluster` and leave `WATCH_NAMESPACE` unset.
 
 `database.caSecretName` or `database.caConfigMap` optionally selects an existing
 CA source in the release namespace; configure only one. `database.caKey`

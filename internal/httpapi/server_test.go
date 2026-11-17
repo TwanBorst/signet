@@ -28,6 +28,55 @@ func TestIdentityInjection(t *testing.T) {
 		t.Fatalf("custom header: %s %v", actor, err)
 	}
 }
+
+func TestNamespaceScopeFiltersHistoryAndActions(t *testing.T) {
+	db := testutil.DB(t)
+	for _, tc := range []struct{ uid, namespace, kind string }{
+		{"local", "team-a", "SignetIssuer"},
+		{"remote", "team-b", "SignetIssuer"},
+		{"cluster", "team-a", "SignetClusterIssuer"},
+	} {
+		cr, _ := testutil.Request(t, tc.uid)
+		cr.Namespace, cr.Spec.IssuerRef.Kind = tc.namespace, tc.kind
+		testutil.Ensure(t, db, cr, api.IssuerSpec{}, "issuer-uid")
+	}
+	h := &httpapi.Server{Store: db, Namespace: "team-a", AuthHeader: "x-auth-request-email",
+		Origins: []string{"https://signet.example.com"}, Live: func(context.Context, store.Request) error {
+			t.Fatal("out-of-scope mutation reached live validation")
+			return nil
+		}}
+	send := func(method, path string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, bytes.NewBufferString(`{"version":1,"reason":"Not needed"}`))
+		r.Header.Set("x-auth-request-email", "operator@example.com")
+		r.Header.Set("Origin", "https://signet.example.com")
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Signet-CSRF", "1")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	w := send("GET", "/api/requests")
+	var requests []store.Request
+	if err := json.Unmarshal(w.Body.Bytes(), &requests); err != nil || w.Code != 200 || len(requests) != 1 || requests[0].UID != "local" {
+		t.Fatalf("namespace list: %d %s err=%v", w.Code, w.Body, err)
+	}
+	if w := send("GET", "/api/requests/local/csr"); w.Code != 200 {
+		t.Fatalf("in-scope history unavailable: %d %s", w.Code, w.Body)
+	}
+	for _, uid := range []string{"remote", "cluster"} {
+		for _, suffix := range []string{"", "/audit", "/csr"} {
+			if w := send("GET", "/api/requests/"+uid+suffix); w.Code != 404 {
+				t.Fatalf("exposed %s%s: %d", uid, suffix, w.Code)
+			}
+		}
+		for _, action := range []string{"upload", "deny", "cancel"} {
+			if w := send("POST", "/api/requests/"+uid+"/"+action); w.Code != 404 {
+				t.Fatalf("allowed %s for %s: %d", action, uid, w.Code)
+			}
+		}
+	}
+}
+
 func TestAPIWorkflowAuditAndCSRF(t *testing.T) {
 	s := testutil.DB(t)
 	cr, _ := testutil.Request(t, "api")

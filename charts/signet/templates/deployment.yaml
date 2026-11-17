@@ -64,8 +64,12 @@ spec:
             {{- end }}
             - name: AUTH_HEADER
               value: {{ .Values.authHeader | quote }}
-            - name: ISSUER_INSTANCES
-              value: {{ .Values.issuerInstances | toJson | quote }}
+            - name: DEPLOYMENT_MODE
+              value: {{ .Values.deployment.mode | quote }}
+            {{- if eq .Values.deployment.mode "namespace" }}
+            - name: WATCH_NAMESPACE
+              value: {{ default .Release.Namespace .Values.deployment.namespace | quote }}
+            {{- end }}
           {{- if or .Values.database.caConfigMap .Values.database.caSecretName }}
           volumeMounts:
             - name: database-ca

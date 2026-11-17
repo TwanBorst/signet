@@ -27,6 +27,10 @@ import (
 )
 
 func run() error {
+	scope, err := deploymentScope()
+	if err != nil {
+		return err
+	}
 	ctx := ctrl.SetupSignalHandler()
 	config, err := databaseConfig()
 	if err != nil {
@@ -45,15 +49,6 @@ func run() error {
 	cancel()
 	if err != nil {
 		return errors.New("database migration failed; check schema, connectivity and migration role permissions")
-	}
-	var instances []controller.Instance
-	if err := json.Unmarshal([]byte(os.Getenv("ISSUER_INSTANCES")), &instances); err != nil || len(instances) == 0 {
-		return errors.New("ISSUER_INSTANCES must be a nonempty JSON list")
-	}
-	for _, i := range instances {
-		if i.Name == "" || (i.Kind != "SignetIssuer" && i.Kind != "SignetClusterIssuer") || (i.Kind == "SignetIssuer" && i.Namespace == "") || (i.Kind == "SignetClusterIssuer" && i.Namespace != "") {
-			return errors.New("issuer instance must specify exact kind, name, and correct namespace scope")
-		}
 	}
 	origins, err := publicOrigins(os.Getenv("PUBLIC_ORIGIN"), os.Getenv("PUBLIC_ORIGINS"))
 	if err != nil {
@@ -74,20 +69,28 @@ func run() error {
 		return err
 	}
 	ctrl.SetLogger(zap.New())
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{Scheme: scheme, Metrics: server.Options{BindAddress: "0"}, LeaderElection: false})
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{Scheme: scheme, Cache: scope.CacheOptions(), Metrics: server.Options{BindAddress: "0"}, LeaderElection: false})
 	if err != nil {
 		return err
 	}
-	c := &controller.Controller{Store: db, Instances: instances}
+	c := &controller.Controller{Store: db, Scope: scope}
 	if err := c.Setup(ctx, mgr); err != nil {
 		return err
 	}
-	handler := &httpapi.Server{Store: db, AuthHeader: header, Origins: origins, UI: http.FileServer(http.Dir("/app/ui")), Live: c.Live}
+	handler := &httpapi.Server{Store: db, Namespace: scope.Namespace, AuthHeader: header, Origins: origins, UI: http.FileServer(http.Dir("/app/ui")), Live: c.Live}
 	httpServer := &http.Server{Addr: ":8080", Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	if err := mgr.Add(&httpRunner{server: httpServer}); err != nil {
 		return err
 	}
 	return mgr.Start(ctx)
+}
+
+func deploymentScope() (controller.Scope, error) {
+	if _, exists := os.LookupEnv("ISSUER_INSTANCES"); exists {
+		return controller.Scope{}, errors.New("ISSUER_INSTANCES is no longer supported; configure DEPLOYMENT_MODE and WATCH_NAMESPACE")
+	}
+	scope := controller.Scope{Mode: os.Getenv("DEPLOYMENT_MODE"), Namespace: os.Getenv("WATCH_NAMESPACE")}
+	return scope, scope.Validate()
 }
 
 func databaseConfig() (*pgxpool.Config, error) {

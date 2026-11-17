@@ -15,6 +15,39 @@ import (
 	"time"
 )
 
+func TestDeploymentScope(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, namespace string
+		legacy                bool
+		valid                 bool
+	}{
+		{"cluster", "cluster", "", false, true},
+		{"namespace", "namespace", "team-a", false, true},
+		{"missing mode", "", "", false, false},
+		{"invalid mode", "all", "", false, false},
+		{"missing namespace", "namespace", "", false, false},
+		{"invalid namespace", "namespace", "Team_A", false, false},
+		{"cluster with namespace", "cluster", "team-a", false, false},
+		{"legacy allowlist", "cluster", "", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DEPLOYMENT_MODE", tc.mode)
+			t.Setenv("WATCH_NAMESPACE", tc.namespace)
+			t.Setenv("ISSUER_INSTANCES", "")
+			if !tc.legacy {
+				os.Unsetenv("ISSUER_INSTANCES")
+			}
+			scope, err := deploymentScope()
+			if (err == nil) != tc.valid {
+				t.Fatalf("scope=%+v err=%v", scope, err)
+			}
+			if tc.valid && (scope.Mode != tc.mode || scope.Namespace != tc.namespace) {
+				t.Fatalf("scope not preserved: %+v", scope)
+			}
+		})
+	}
+}
+
 func TestDatabaseConfig(t *testing.T) {
 	for _, name := range []string{"DATABASE_URL", "DATABASE_HOST", "DATABASE_NAME", "DATABASE_USERNAME", "DATABASE_PASSWORD", "DATABASE_PORT", "DATABASE_SSLROOTCERT"} {
 		t.Setenv(name, "")

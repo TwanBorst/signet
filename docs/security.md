@@ -37,8 +37,16 @@ and investigate partial failures. Signet stores neither private keys nor TLS
 Secrets in the database or logs. cert-manager owns generated private keys and
 Secrets. Protect those Secrets with Kubernetes RBAC and encryption at rest.
 The chart does not grant Secret access or native `certificates.k8s.io` CSR
-permissions. Signer approvals are limited to configured exact issuer
-identities; review any other cert-manager approver policies independently.
+permissions. Namespace deployment mode limits workload access to one
+namespace and excludes cluster issuers; cluster mode manages both issuer
+kinds throughout the cluster. Both modes include a cluster-scoped,
+issuer-type-specific signer approval grant because cert-manager checks it
+without a namespace. In namespace mode, the namespace Role is the boundary
+preventing status writes elsewhere. No issuer creation, spec updates or
+deletion permissions are granted. Review who can create or modify issuers
+and CertificateRequests within the managed scope, and review any other
+cert-manager approver policies independently. See
+[issuer configuration](issuers.md) for mode selection and migration guidance.
 
 Database connections strictly require `sslmode=verify-full` with a trusted externally supplied provider CA
 and matching server hostname. Keep credentials in an external Secret, grant

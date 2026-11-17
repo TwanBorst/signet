@@ -27,7 +27,7 @@ func setup(t *testing.T, cr *cmapi.CertificateRequest) (*controller.Controller, 
 	api.AddToScheme(scheme)
 	i := &api.SignetIssuer{ObjectMeta: metav1.ObjectMeta{Name: "manual", Namespace: "test", UID: "issuer-uid"}}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&cmapi.CertificateRequest{}).WithObjects(cr, i).Build()
-	return &controller.Controller{Store: testutil.DB(t), Client: cl, Reader: cl, Instances: []controller.Instance{{Kind: "SignetIssuer", Namespace: "test", Name: "manual"}}}, i
+	return &controller.Controller{Store: testutil.DB(t), Client: cl, Reader: cl, Scope: controller.Scope{Mode: "namespace", Namespace: "test"}}, i
 }
 func TestApprovalManualIssuanceRestartDeletion(t *testing.T) {
 	ctx := context.Background()
@@ -56,7 +56,7 @@ func TestApprovalManualIssuanceRestartDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Recreated controller uses only durable state; private keys are never passed.
-	restarted := &controller.Controller{Store: c.Store, Client: c.Client, Reader: c.Reader, Instances: c.Instances}
+	restarted := &controller.Controller{Store: c.Store, Client: c.Client, Reader: c.Reader, Scope: c.Scope}
 	bundle, err := restarted.Sign(ctx, obj, i)
 	if err != nil || len(bundle.ChainPEM) == 0 {
 		t.Fatalf("restart delivery err=%v", err)
@@ -90,7 +90,7 @@ func TestScopeDenialAndUnavailableAudit(t *testing.T) {
 	for _, change := range []func(*cmapi.CertificateRequest){
 		func(r *cmapi.CertificateRequest) { r.Spec.IssuerRef.Group = "other" },
 		func(r *cmapi.CertificateRequest) { r.Spec.IssuerRef.Kind = "" },
-		func(r *cmapi.CertificateRequest) { r.Spec.IssuerRef.Name = "other" },
+		func(r *cmapi.CertificateRequest) { r.Spec.IssuerRef.Kind = "SignetClusterIssuer" },
 		func(r *cmapi.CertificateRequest) { r.Namespace = "other" },
 	} {
 		copy := cr.DeepCopy()
