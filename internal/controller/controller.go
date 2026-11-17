@@ -28,32 +28,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type Instance struct {
-	Kind      string `json:"kind"`
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-}
 type Controller struct {
-	Client    client.Client
-	Reader    client.Reader
-	Store     *store.Store
-	Instances []Instance
+	Client client.Client
+	Reader client.Reader
+	Store  *store.Store
+	Scope  Scope
 }
 
 func (c *Controller) Matches(cr *cmapi.CertificateRequest) bool {
-	if cr.Spec.IssuerRef.Group != api.GroupVersion.Group {
+	if cr.Spec.IssuerRef.Group != api.GroupVersion.Group || cr.Spec.IssuerRef.Name == "" {
 		return false
 	}
-	ns := cr.Namespace
-	if cr.Spec.IssuerRef.Kind == "SignetClusterIssuer" {
-		ns = ""
-	}
-	for _, i := range c.Instances {
-		if i.Kind == cr.Spec.IssuerRef.Kind && i.Name == cr.Spec.IssuerRef.Name && i.Namespace == ns {
-			return true
-		}
-	}
-	return false
+	return c.Scope.Manages(cr.Spec.IssuerRef.Kind, cr.Namespace)
 }
 func condition(cr *cmapi.CertificateRequest, kind cmapi.CertificateRequestConditionType) bool {
 	for _, v := range cr.Status.Conditions {
@@ -291,6 +277,9 @@ func (c *Controller) fail(ctx context.Context, uid, reason string) (signer.PEMBu
 }
 
 func (c *Controller) Live(ctx context.Context, r store.Request) error {
+	if !c.Scope.Manages(r.IssuerKind, r.Namespace) {
+		return store.Reject(409, "request is no longer managed by this deployment")
+	}
 	var cr cmapi.CertificateRequest
 	if err := c.Reader.Get(ctx, types.NamespacedName{Namespace: r.Namespace, Name: r.Name}, &cr); err != nil {
 		return store.Reject(409, "Kubernetes request is unavailable")
@@ -308,6 +297,9 @@ func (c *Controller) Sweep(ctx context.Context) error {
 		return err
 	}
 	for _, r := range requests {
+		if !c.Scope.Manages(r.IssuerKind, r.Namespace) {
+			continue
+		}
 		var cr cmapi.CertificateRequest
 		err := c.Reader.Get(ctx, types.NamespacedName{Namespace: r.Namespace, Name: r.Name}, &cr)
 		if apierrors.IsNotFound(err) || (err == nil && (string(cr.UID) != r.UID || cr.DeletionTimestamp != nil)) {
@@ -343,6 +335,9 @@ func (s sweeper) Start(ctx context.Context) error {
 }
 func (s sweeper) NeedLeaderElection() bool { return false }
 func (c *Controller) Setup(ctx context.Context, mgr ctrl.Manager) error {
+	if err := c.Scope.Validate(); err != nil {
+		return err
+	}
 	c.Client = mgr.GetClient()
 	c.Reader = mgr.GetAPIReader()
 	if err := ctrl.NewControllerManagedBy(mgr).Named("signet-approver-observer").For(&cmapi.CertificateRequest{}).Complete(c); err != nil {
@@ -351,42 +346,40 @@ func (c *Controller) Setup(ctx context.Context, mgr ctrl.Manager) error {
 	if err := mgr.Add(sweeper{c}); err != nil {
 		return err
 	}
-	return (&controllers.CombinedController{
-		IssuerTypes: []issuerapi.Issuer{&api.SignetIssuer{}}, ClusterIssuerTypes: []issuerapi.Issuer{&api.SignetClusterIssuer{}},
-		FieldOwner: "signet.io", MaxRetryDuration: time.Minute, DisableKubernetesCSRController: true,
+	combined := &controllers.CombinedController{
+		IssuerTypes: []issuerapi.Issuer{&api.SignetIssuer{}},
+		FieldOwner:  "signet.io", MaxRetryDuration: time.Minute, DisableKubernetesCSRController: true,
 		Sign: c.Sign, Check: c.Check, EventRecorder: mgr.GetEventRecorder("signet.io"),
 		IgnoreIssuer: func(_ context.Context, i issuerapi.Issuer) (bool, error) {
 			kind := "SignetIssuer"
 			if _, ok := i.(*api.SignetClusterIssuer); ok {
 				kind = "SignetClusterIssuer"
 			}
-			for _, inst := range c.Instances {
-				if inst.Kind == kind && inst.Name == i.GetName() && inst.Namespace == i.GetNamespace() {
-					return false, nil
-				}
-			}
-			return true, nil
+			return !c.Scope.Manages(kind, i.GetNamespace()), nil
 		},
 		IgnoreCertificateRequest: func(ctx context.Context, r signer.CertificateRequestObject, gvk schema.GroupVersionKind, name types.NamespacedName) (bool, error) {
-			for _, inst := range c.Instances {
-				if inst.Kind == gvk.Kind && inst.Name == name.Name && inst.Namespace == name.Namespace {
-					var live cmapi.CertificateRequest
-					if err := c.Reader.Get(ctx, types.NamespacedName{Namespace: r.GetNamespace(), Name: r.GetName()}, &live); err != nil {
-						return true, err
-					}
-					if !c.Matches(&live) || !Approved(&live) || live.UID != r.GetUID() {
-						return true, nil
-					}
-					if _, err := c.Store.Get(ctx, string(r.GetUID())); err != nil {
-						return true, err
-					}
-					if err := c.Store.Record(ctx, string(r.GetUID()), "system:controller", "reconcile.intent", "success", "Eligible approved request status reconciliation"); err != nil {
-						return true, err
-					}
-					return false, nil
-				}
+			if gvk.Group != api.GroupVersion.Group || !c.Scope.Manages(gvk.Kind, r.GetNamespace()) {
+				return true, nil
 			}
-			return true, nil
+			var live cmapi.CertificateRequest
+			if err := c.Reader.Get(ctx, types.NamespacedName{Namespace: r.GetNamespace(), Name: r.GetName()}, &live); err != nil {
+				return true, err
+			}
+			if !c.Matches(&live) || !Approved(&live) || live.UID != r.GetUID() ||
+				live.Spec.IssuerRef.Kind != gvk.Kind || live.Spec.IssuerRef.Name != name.Name {
+				return true, nil
+			}
+			if _, err := c.Store.Get(ctx, string(r.GetUID())); err != nil {
+				return true, err
+			}
+			if err := c.Store.Record(ctx, string(r.GetUID()), "system:controller", "reconcile.intent", "success", "Eligible approved request status reconciliation"); err != nil {
+				return true, err
+			}
+			return false, nil
 		},
-	}).SetupWithManager(ctx, mgr)
+	}
+	if c.Scope.Mode == "cluster" {
+		combined.ClusterIssuerTypes = []issuerapi.Issuer{&api.SignetClusterIssuer{}}
+	}
+	return combined.SetupWithManager(ctx, mgr)
 }

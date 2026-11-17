@@ -27,13 +27,9 @@ database:
   caSecretName: postgres-provider-ca
 publicOrigin: https://signet.example.com
 authHeader: x-auth-request-email
-issuerInstances:
-  - kind: SignetClusterIssuer
-    name: manual
-    namespace: ""
-  - kind: SignetIssuer
-    name: team
-    namespace: team-a
+deployment:
+  mode: cluster
+  namespace: ""
 networkPolicy:
   ingressFrom:
     - namespaceSelector:
@@ -136,7 +132,13 @@ isolated smoke test: no chart NetworkPolicy is rendered or enforced, and the
 peer/CIDR requirements are skipped. This is not a secure production setting
 and provides no network-isolation assurance.
 
-Create an issuer matching the configured identity:
+This example explicitly enables cluster mode to manage both issuer kinds
+throughout the cluster. For a namespace-limited deployment, use
+`deployment.mode: namespace` (the chart default) and set
+`deployment.namespace` to the namespace to manage, or leave it empty to use
+the release namespace. Namespace mode manages only `SignetIssuer` resources.
+
+Create an issuer within the configured deployment scope:
 
 ```yaml
 apiVersion: signet.io/v1alpha1
@@ -151,12 +153,11 @@ spec:
   #   -----END CERTIFICATE-----
 ```
 
-`SignetIssuer` is namespaced; configure the corresponding namespace in
-`issuerInstances`. `SignetClusterIssuer` is cluster-scoped and must use an
-empty namespace. `dnsNames` is an optional DNS domain suffix allowlist;
-`caBundle` is optional inline PEM. Configure the instances before creating
-CertificateRequests and update the release when changing them. The chart
-requires explicit issuer identities, an HTTPS origin, database configuration,
+`SignetIssuer` is namespaced; `SignetClusterIssuer` is cluster-scoped and must
+omit `metadata.namespace`. Signet automatically discovers all issuers in its
+deployment scope without a per-issuer allowlist. `dnsNames` is an optional DNS
+domain suffix allowlist; `caBundle` is optional inline PEM. The chart
+requires an HTTPS origin, database configuration,
 trusted ingress peers, PostgreSQL egress and API-server CIDRs.
 
 See [issuer configuration](issuers.md) for templates for both issuer kinds,

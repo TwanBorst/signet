@@ -6,8 +6,8 @@ see [Gateway API v1.4.0](https://github.com/kubernetes-sigs/gateway-api/releases
 check your controller's compatibility before installing it. cert-manager 1.20+
 and Signet's CRDs/controller must also be installed. Replace the GatewayClass,
 domains, namespaces, service name and issuer reference before applying.
-Install a `SignetClusterIssuer` named `manual` and include it in the chart's
-`issuerInstances`. Issue the certificates via Signet before expecting TLS to
+Install a `SignetClusterIssuer` named `manual` and configure the chart with
+`deployment.mode: cluster`. Issue the certificates via Signet before expecting TLS to
 become ready. The Secret references are in the Gateway namespace; cert-manager,
 not Signet, generates and stores their private keys.
 

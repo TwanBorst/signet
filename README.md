@@ -7,7 +7,8 @@ externally, and upload the certificate and optional chain.
 
 The Go controller uses cert-manager's issuer-lib; the React/TypeScript interface
 provides an authenticated queue, certificate history, and durable PostgreSQL
-audit. Only explicitly configured `signet.io` issuer instances are managed.
+audit. Signet manages all namespaced `signet.io` issuers in one namespace by
+default, or both issuer kinds cluster-wide when configured in cluster mode.
 There is no native Kubernetes CSR workflow.
 
 ## Deployment

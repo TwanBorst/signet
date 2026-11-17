@@ -201,7 +201,7 @@ func (s *Store) Get(ctx context.Context, uid string) (Request, error) {
 	}
 	return r, err
 }
-func (s *Store) List(ctx context.Context, q, state, before string) ([]Request, error) {
+func (s *Store) List(ctx context.Context, q, state, before, namespace string) ([]Request, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT `+columns+` FROM requests
 		WHERE ($1='' OR namespace ILIKE '%'||$1||'%' OR name ILIKE '%'||$1||'%' OR data::text ILIKE '%'||$1||'%'
 			OR EXISTS (SELECT 1 FROM audit a WHERE a.uid=requests.uid
@@ -209,7 +209,8 @@ func (s *Store) List(ctx context.Context, q, state, before string) ([]Request, e
 					OR a.outcome ILIKE '%'||$1||'%' OR a.detail ILIKE '%'||$1||'%')))
 		AND ($2='' OR state=$2)
 		AND ($3='' OR (created_at,uid) < (SELECT created_at,uid FROM requests WHERE uid=$3))
-		ORDER BY created_at DESC,uid DESC LIMIT 100`, q, state, before)
+		AND ($4='' OR (namespace=$4 AND data->>'issuerKind'='SignetIssuer'))
+		ORDER BY created_at DESC,uid DESC LIMIT 100`, q, state, before, namespace)
 	if err != nil {
 		return nil, err
 	}

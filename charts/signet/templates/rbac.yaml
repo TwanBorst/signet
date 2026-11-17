@@ -1,16 +1,25 @@
+{{- $cluster := eq .Values.deployment.mode "cluster" -}}
+{{- $namespace := default .Release.Namespace .Values.deployment.namespace -}}
 apiVersion: rbac.authorization.k8s.io/v1
+{{- if $cluster }}
 kind: ClusterRole
+{{- else }}
+kind: Role
+{{- end }}
 metadata:
   name: {{ include "signet.name" . }}-{{ .Release.Namespace }}
+  {{- if not $cluster }}
+  namespace: {{ $namespace }}
+  {{- end }}
 rules:
   - apiGroups: ["events.k8s.io"]
     resources: ["events"]
     verbs: ["create", "patch"]
   - apiGroups: ["signet.io"]
-    resources: ["signetissuers", "signetclusterissuers"]
+    resources: {{ ternary (list "signetissuers" "signetclusterissuers") (list "signetissuers") $cluster | toJson }}
     verbs: ["get", "list", "watch"]
   - apiGroups: ["signet.io"]
-    resources: ["signetissuers/status", "signetclusterissuers/status"]
+    resources: {{ ternary (list "signetissuers/status" "signetclusterissuers/status") (list "signetissuers/status") $cluster | toJson }}
     verbs: ["get", "patch", "update"]
   - apiGroups: ["cert-manager.io"]
     resources: ["certificaterequests"]
@@ -21,26 +30,54 @@ rules:
   - apiGroups: ["cert-manager.io"]
     resources: ["certificaterequests/approval"]
     verbs: ["update"]
+---
+# cert-manager checks signer approval authorization without a namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "signet.name" . }}-{{ .Release.Namespace }}-approve
+rules:
   - apiGroups: ["cert-manager.io"]
     resources: ["signers"]
     verbs: ["approve"]
     resourceNames:
-      {{- range .Values.issuerInstances }}
-      {{- if eq .kind "SignetIssuer" }}
-      - {{ printf "signetissuers.signet.io/%s.%s" .namespace .name | quote }}
-      {{- else }}
-      - {{ printf "signetclusterissuers.signet.io/%s" .name | quote }}
+      - "signetissuers.signet.io/*"
+      {{- if $cluster }}
+      - "signetclusterissuers.signet.io/*"
       {{- end }}
-      {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+{{- if $cluster }}
+kind: ClusterRoleBinding
+{{- else }}
+kind: RoleBinding
+{{- end }}
+metadata:
+  name: {{ include "signet.name" . }}-{{ .Release.Namespace }}
+  {{- if not $cluster }}
+  namespace: {{ $namespace }}
+  {{- end }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  {{- if $cluster }}
+  kind: ClusterRole
+  {{- else }}
+  kind: Role
+  {{- end }}
+  name: {{ include "signet.name" . }}-{{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "signet.name" . }}
+    namespace: {{ .Release.Namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "signet.name" . }}-{{ .Release.Namespace }}
+  name: {{ include "signet.name" . }}-{{ .Release.Namespace }}-approve
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "signet.name" . }}-{{ .Release.Namespace }}
+  name: {{ include "signet.name" . }}-{{ .Release.Namespace }}-approve
 subjects:
   - kind: ServiceAccount
     name: {{ include "signet.name" . }}

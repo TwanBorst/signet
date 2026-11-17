@@ -29,9 +29,12 @@ publicOrigin: ""
 publicOrigins: []
 # Trusted upstream identity header: one verified ASCII email; upstream must strip/replace it.
 authHeader: x-auth-request-email
-# Exact managed issuers: kind, name, namespace. Cluster issuers use namespace: "".
-# Example: [{kind: SignetIssuer, name: manual, namespace: team-a}]
-issuerInstances: []
+deployment:
+  # namespace: all SignetIssuers in one namespace; cluster: both kinds cluster-wide.
+  mode: namespace
+  # Namespace to manage in namespace mode; defaults to the release namespace.
+  # Must be empty in cluster mode.
+  namespace: ""
 service:
   port: 8080
 networkPolicy:

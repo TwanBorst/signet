@@ -36,10 +36,15 @@ optional integrations, not dependencies.
 use `events.k8s.io` create/patch permissions. No leader-election Lease
 permissions are needed.
 
-Exact signer approval names follow cert-manager's
+Signer approval names follow cert-manager's
 [v1.20.5 webhook `signerNamesForAPIResource`](https://github.com/cert-manager/cert-manager/blob/v1.20.5/internal/webhook/admission/certificaterequest/approval/certificaterequest_approval.go):
 `signetissuers.signet.io/<namespace>.<name>` for a namespaced issuer and
 `signetclusterissuers.signet.io/<name>` for a cluster issuer. The namespace/name
 slash spelling is not the webhook's signer format. Its `buildAttributes`
-checks `approve` on `cert-manager.io` resource `signers`; the chart grants
-only configured exact identities, without wildcard signer approvals.
+checks `approve` on `cert-manager.io` resource `signers` without a namespace.
+The chart grants the supported whole-type wildcard `signetissuers.signet.io/*`
+and, only in cluster mode, `signetclusterissuers.signet.io/*`.
+Namespace mode limits workload RBAC and cached watches to one namespace and
+does not register a cluster issuer controller. The namespace Role limits
+actual CertificateRequest status writes even though signer authorization
+requires a cluster-scoped grant. See [issuer configuration](issuers.md).

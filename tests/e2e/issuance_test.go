@@ -77,7 +77,7 @@ func TestCertManagerManualIssuanceAndRenewal(t *testing.T) {
 	}
 	t.Cleanup(func() { cl.Delete(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}) })
 
-	instances := []controller.Instance{{Kind: "SignetIssuer", Namespace: ns, Name: "manual"}, {Kind: "SignetClusterIssuer", Name: ns}}
+	instances := []cmmeta.IssuerReference{{Kind: "SignetIssuer", Name: "manual"}, {Kind: "SignetClusterIssuer", Name: ns}}
 	var c *controller.Controller
 	var stop context.CancelFunc
 	var done chan error
@@ -88,7 +88,7 @@ func TestCertManagerManualIssuanceAndRenewal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		c = &controller.Controller{Store: db, Instances: instances}
+		c = &controller.Controller{Store: db, Scope: controller.Scope{Mode: "cluster"}}
 		if err := c.Setup(runctx, mgr); err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +131,7 @@ func TestCertManagerManualIssuanceAndRenewal(t *testing.T) {
 			pending := func(previous string) store.Request {
 				var result store.Request
 				eventually(t, "approved CSR in durable pending queue", func() bool {
-					requests, err := db.List(ctx, ns, "pending", "")
+					requests, err := db.List(ctx, ns, "pending", "", "")
 					if err != nil {
 						return false
 					}

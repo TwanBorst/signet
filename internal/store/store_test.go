@@ -48,7 +48,7 @@ func TestMigrationsRacesAndAuditOutage(t *testing.T) {
 	if successes.Load() != 1 {
 		t.Fatalf("racing decisions succeeded %d times", successes.Load())
 	}
-	if matches, err := s.List(ctx, "operator@example.com", "", ""); err != nil || len(matches) != 1 {
+	if matches, err := s.List(ctx, "operator@example.com", "", "", ""); err != nil || len(matches) != 1 {
 		t.Fatalf("audit actor search matches=%d err=%v", len(matches), err)
 	}
 	audits, err := s.Audits(ctx, string(cr.UID))

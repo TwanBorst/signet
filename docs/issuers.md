@@ -18,36 +18,83 @@ shared policy. A domain allowlist restricts names, not which namespaces may
 use a cluster issuer. Use Kubernetes RBAC and your cluster's certificate
 request policies to control who can create requests.
 
-## Register the managed identities
+## Choose the deployment mode
 
-Before creating certificate requests, include every issuer Signet should
-manage in the Helm release's values:
+Signet automatically discovers all issuers within its configured scope,
+including issuers created after startup. There is no per-issuer registration
+list. Choose a mode in your complete Helm values file.
+
+The default is **namespace mode**:
 
 ```yaml
-issuerInstances:
-  - kind: SignetClusterIssuer
-    name: manual
-    namespace: ""
-  - kind: SignetIssuer
-    name: team
-    namespace: team-a
+deployment:
+  mode: namespace
+  namespace: team-a
 ```
 
-The kind, name and namespace must match exactly. Cluster issuers require
-`namespace: ""` in this list, even though their Kubernetes resources omit
-`metadata.namespace`. Namespaced issuers use their own namespace, which need
-not be the namespace where Signet is deployed.
+This manages all `SignetIssuer` resources and their CertificateRequests in
+`team-a`. Omit `deployment.namespace` or set it to `""` to use the Helm release
+namespace. A custom namespace must already exist and may differ from the
+namespace where Signet runs. Namespaced mode does not watch or manage any
+`SignetClusterIssuer`, including requests referencing one from `team-a`.
 
-This setting configures the managed identities and their scoped signer
-approval RBAC; it does not create issuer resources. Upgrade the release using
-your complete values file when changing the list. Helm replaces lists, so
-retain all identities that should remain managed. For non-Helm deployments,
-see [`ISSUER_INSTANCES`](configuration.md).
+For **cluster mode**:
+
+```yaml
+deployment:
+  mode: cluster
+  namespace: ""
+```
+
+This manages every `SignetIssuer` in every namespace and every
+`SignetClusterIssuer`, together with their CertificateRequests throughout
+the cluster. `deployment.namespace` must be empty in this mode.
+
+The chart configures the runtime scope and RBAC, not the issuer resources
+themselves. Both modes grant issuer reads and status updates, not issuer
+creation, editing of `spec`, or deletion. Namespace mode uses a Role and
+RoleBinding in the watched namespace; cluster mode uses a ClusterRole and
+ClusterRoleBinding for workload access.
+
+Both modes also need a small ClusterRole/ClusterRoleBinding for cert-manager's
+synthetic `signers` approval authorization. cert-manager performs that check
+without a namespace and supports a whole-issuer-type wildcard, not a
+`<namespace>.*` wildcard. Namespace mode grants only
+`signetissuers.signet.io/*`; the namespace Role prevents it from modifying
+CertificateRequest status elsewhere. Cluster mode additionally grants
+`signetclusterissuers.signet.io/*`. Installing even namespace mode therefore
+requires an administrator able to provision these cluster-scoped resources
+and Signet's CRDs.
+
+The UI/API filters request history and actions to the configured scope in
+namespace mode; records outside it remain stored but are not exposed or
+processed. Use separate databases or database schemas for independent
+deployments, and do not run overlapping deployment scopes against the same
+requests. Deployment scope is not per-user authorization: all authenticated
+Signet operators can act on its managed queue.
+
+For non-Helm deployments, set `DEPLOYMENT_MODE` and, for namespace mode,
+`WATCH_NAMESPACE`; see [runtime configuration](configuration.md).
+
+### Migrating from the issuer allowlist
+
+`issuerInstances` and `ISSUER_INSTANCES` have been removed. The chart and
+runtime reject these settings rather than silently broadening access.
+Remove them and explicitly choose a deployment mode before upgrading.
+Do not reuse old Helm values containing `issuerInstances`; use
+`--reset-values -f <complete-values-file>` if necessary to discard them.
+Use cluster mode to continue managing both issuer kinds, or namespace mode
+to restrict management to all namespaced issuers in one namespace.
+Unlike the former exact-name allowlist, either mode automatically includes
+new issuer names in its scope. Review issuer policies and who can create or
+modify issuers and CertificateRequests before upgrading.
 
 ## Create the issuer resources
 
 Save the following as `issuers.yaml`, replacing the names, namespace and
 domains as needed. Ensure `team-a` exists before applying it.
+The cluster issuer example requires cluster deployment mode; namespace mode
+manages only the namespaced issuer example in its watched namespace.
 
 ```yaml
 apiVersion: signet.io/v1alpha1
@@ -181,8 +228,8 @@ oc describe signetissuer team -n team-a
 oc get certificates,certificaterequests -n team-a
 ```
 
-If a request does not progress, check that its issuer reference matches a
-registered identity, that the issuer exists in the correct scope, and that
+If a request does not progress, check that its issuer is within the configured
+deployment scope, that it exists in the correct resource scope, and that
 all requested names satisfy the policy. Inspect CertificateRequest conditions
 and Signet's queue and audit details for the failure reason. See
 [operations](operations.md) for request lifecycle and recovery behavior.

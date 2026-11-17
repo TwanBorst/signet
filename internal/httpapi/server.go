@@ -18,6 +18,7 @@ import (
 
 type Server struct {
 	Store      *store.Store
+	Namespace  string
 	AuthHeader string
 	Origins    []string
 	UI         http.Handler
@@ -126,7 +127,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request, actor string) {
 			s.reject(w, r, "", actor, "search", 400, "search parameter too long")
 			return
 		}
-		result, err := s.Store.List(r.Context(), q, state, before)
+		result, err := s.Store.List(r.Context(), q, state, before, s.Namespace)
 		if err != nil {
 			failure(w, err)
 			return
@@ -140,6 +141,17 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request, actor string) {
 		return
 	}
 	uid := path[0]
+	if s.Namespace != "" {
+		request, err := s.Store.Get(r.Context(), uid)
+		if err != nil {
+			s.rejectOrFail(w, r, uid, actor, "scope", err)
+			return
+		}
+		if request.Namespace != s.Namespace || request.IssuerKind != "SignetIssuer" {
+			s.reject(w, r, uid, actor, "scope", 404, "request not found")
+			return
+		}
+	}
 	if r.Method == "GET" {
 		switch {
 		case len(path) == 1:

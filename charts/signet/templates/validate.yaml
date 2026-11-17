@@ -28,22 +28,11 @@
 {{- if or (lt $port 1) (gt $port 65535) -}}{{- fail "public origin port must be between 1 and 65535" -}}{{- end -}}
 {{- end -}}
 {{- end -}}
-{{- if not .Values.issuerInstances -}}{{- fail "issuerInstances must not be empty" -}}{{- end -}}
-{{- range .Values.issuerInstances -}}
-  {{- if not (and (hasKey . "kind") (hasKey . "name") (hasKey . "namespace")) -}}
-    {{- fail "issuerInstances entries require kind, name, and namespace" -}}
-  {{- end -}}
-  {{- if not (and (kindIs "string" .name) (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" .name)) -}}
-    {{- fail "issuer name must be a DNS subdomain" -}}
-  {{- end -}}
-  {{- if eq .kind "SignetIssuer" -}}
-    {{- if not (and (kindIs "string" .namespace) (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" .namespace)) -}}
-      {{- fail "SignetIssuer namespace must be a DNS label" -}}
-    {{- end -}}
-  {{- else if eq .kind "SignetClusterIssuer" -}}
-    {{- if ne .namespace "" -}}{{- fail "SignetClusterIssuer namespace must be empty" -}}{{- end -}}
-  {{- else -}}{{- fail "issuer kind must be SignetIssuer or SignetClusterIssuer" -}}
-  {{- end -}}
+{{- if hasKey .Values "issuerInstances" -}}
+{{- fail "issuerInstances is no longer supported; configure deployment.mode and deployment.namespace" -}}
+{{- end -}}
+{{- if and (eq .Values.deployment.mode "cluster") .Values.deployment.namespace -}}
+{{- fail "deployment.namespace must be empty in cluster mode" -}}
 {{- end -}}
 {{- if .Values.networkPolicy.enabled -}}
 {{- if not .Values.networkPolicy.ingressFrom -}}{{- fail "networkPolicy.ingressFrom must identify trusted upstreams" -}}{{- end -}}

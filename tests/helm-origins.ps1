@@ -2,8 +2,7 @@ $ErrorActionPreference = "Stop"
 $chart = Join-Path $PSScriptRoot "..\charts\signet"
 $common = @("template", "signet", $chart,
     "--set", "database.secretName=test-db",
-    "--set", "networkPolicy.enabled=false",
-    "--set-json", 'issuerInstances=[{"kind":"SignetClusterIssuer","name":"manual","namespace":""}]')
+    "--set", "networkPolicy.enabled=false")
 
 function CheckOrigins {
     param([string[]]$Values, [bool]$Accept, [string]$Expected)
@@ -52,6 +51,51 @@ foreach ($origin in @("http://signet.example.com", "https://*.example.com",
     CheckOrigins @("--set-json", "publicOrigins=$json") $false ""
 }
 Write-Output "Helm single/multiple origin configuration and rejection checks passed."
+
+function ScopeManifest {
+    param([string[]]$Values, [bool]$Accept = $true)
+    $output = (& helm @common --namespace signet --set publicOrigin=https://signet.example.com @Values 2>&1 | Out-String).Replace("`r`n", "`n")
+    if (($LASTEXITCODE -eq 0) -ne $Accept) {
+        throw "Unexpected deployment scope outcome for $Values`: $output"
+    }
+    return $output
+}
+
+$namespaced = ScopeManifest @()
+foreach ($expected in @('kind: Role', 'kind: RoleBinding', 'namespace: signet',
+    'resources: ["signetissuers"]', 'name: WATCH_NAMESPACE', 'value: "signet"',
+    'name: DEPLOYMENT_MODE', 'value: "namespace"', '"signetissuers.signet.io/*"')) {
+    if (-not $namespaced.Contains($expected)) { throw "Missing namespaced scope configuration: $expected" }
+}
+if ($namespaced.Contains("signetclusterissuers") -or $namespaced.Contains("ISSUER_INSTANCES")) {
+    throw "Namespace deployment must not grant or configure cluster issuer access"
+}
+$clusterRoles = @($namespaced -split '(?m)^---\n' | Where-Object { $_ -match '(?m)^kind: ClusterRole$' })
+if ($clusterRoles.Count -ne 1 -or $clusterRoles[0].Contains('certificaterequests') -or
+    -not $clusterRoles[0].Contains('resources: ["signers"]')) {
+    throw "Namespace deployment must only grant cluster-scoped signer approval"
+}
+$custom = ScopeManifest @("--set", "deployment.namespace=team-a")
+if ($custom -notmatch 'kind: Role\nmetadata:\n  name: [^\n]+\n  namespace: team-a' -or
+    $custom -notmatch 'kind: RoleBinding\nmetadata:\n  name: [^\n]+\n  namespace: team-a' -or
+    $custom -notmatch 'name: WATCH_NAMESPACE\n\s+value: "team-a"' -or
+    $custom -notmatch 'kind: ServiceAccount\n\s+name: [^\n]+\n\s+namespace: signet') {
+    throw "Custom watch namespace must scope the Role, RoleBinding and environment, not the ServiceAccount"
+}
+$clusterScope = ScopeManifest @("--set", "deployment.mode=cluster")
+foreach ($expected in @('value: "cluster"', '"signetissuers.signet.io/*"', '"signetclusterissuers.signet.io/*"',
+    'resources: ["signetissuers","signetclusterissuers"]',
+    'resources: ["signetissuers/status","signetclusterissuers/status"]')) {
+    if (-not $clusterScope.Contains($expected)) { throw "Missing cluster scope configuration: $expected" }
+}
+if ($clusterScope.Contains("WATCH_NAMESPACE") -or $clusterScope -match '(?m)^kind: Role(Binding)?$') {
+    throw "Cluster deployment must not configure namespace-only watches or RBAC"
+}
+$null = ScopeManifest @("--set", "deployment.mode=invalid") $false
+$null = ScopeManifest @("--set", "deployment.mode=cluster", "--set", "deployment.namespace=team-a") $false
+$null = ScopeManifest @("--set", "deployment.namespace=Team_A") $false
+$null = ScopeManifest @("--set-json", 'issuerInstances=[]') $false
+Write-Output "Helm deployment scope, RBAC and legacy configuration rejection checks passed."
 
 $destination = Join-Path (Join-Path $PSScriptRoot "..\.verification") ("chart-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $destination -Force | Out-Null

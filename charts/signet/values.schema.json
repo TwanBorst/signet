@@ -26,17 +26,13 @@
       "uniqueItems": true,
       "items": {"type": "string", "minLength": 1}
     },
-    "issuerInstances": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["kind", "name", "namespace"],
-        "additionalProperties": false,
-        "properties": {
-          "kind": {"enum": ["SignetIssuer", "SignetClusterIssuer"]},
-          "name": {"type": "string", "minLength": 1, "maxLength": 253},
-          "namespace": {"type": "string", "maxLength": 63}
-        }
+    "deployment": {
+      "type": "object",
+      "required": ["mode", "namespace"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"enum": ["cluster", "namespace"]},
+        "namespace": {"type": "string", "maxLength": 63, "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?)?$"}
       }
     },
     "service": {
