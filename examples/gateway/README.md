@@ -6,6 +6,11 @@ see [Gateway API v1.4.0](https://github.com/kubernetes-sigs/gateway-api/releases
 check your controller's compatibility before installing it. cert-manager 1.20+
 and Signet's CRDs/controller must also be installed. Replace the GatewayClass,
 domains, namespaces, service name and issuer reference before applying.
+The HTTPRoute targets Service `signet`, the default for a Helm release named
+`signet`. Releases already containing the chart name use the release name
+alone (for example, `prod-signet`); other releases append `-signet` (for
+example, `prod` becomes `prod-signet`). Update `backendRefs[].name` to match
+your release's Service.
 Install a `SignetClusterIssuer` named `manual` and configure the chart with
 `deployment.mode: cluster`. Issue the certificates via Signet before expecting TLS to
 become ready. The Secret references are in the Gateway namespace; cert-manager,
