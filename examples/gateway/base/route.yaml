@@ -11,5 +11,5 @@ spec:
   hostnames: [signet.example.com]
   rules:
     - backendRefs:
-        - name: signet-signet
+        - name: signet
           port: 8080

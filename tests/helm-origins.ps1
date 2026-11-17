@@ -97,6 +97,60 @@ $null = ScopeManifest @("--set", "deployment.namespace=Team_A") $false
 $null = ScopeManifest @("--set-json", 'issuerInstances=[]') $false
 Write-Output "Helm deployment scope, RBAC and legacy configuration rejection checks passed."
 
+foreach ($case in @(
+    @{ Release = "signet"; Name = "signet" },
+    @{ Release = "prod-signet"; Name = "prod-signet" },
+    @{ Release = "signet-prod"; Name = "signet-prod" },
+    @{ Release = "prod"; Name = "prod-signet" },
+    @{ Release = ("x" * 53); Name = (("x" * 53) + "-signet") }
+)) {
+    foreach ($mode in @("namespace", "cluster")) {
+        $arguments = $common.Clone()
+        $arguments[1] = $case.Release
+        $output = (& helm @arguments --namespace release-ns --set publicOrigin=https://signet.example.com `
+            --set "deployment.mode=$mode" --set networkPolicy.enabled=true `
+            --set-json 'networkPolicy.ingressFrom=[{"namespaceSelector":{"team":"gateway"},"podSelector":{"app":"proxy"}}]' `
+            --set-json 'networkPolicy.postgres.cidrs=["192.0.2.10/32"]' `
+            --set-json 'networkPolicy.apiServer.cidrs=["192.0.2.20/32"]' 2>&1 | Out-String).Replace("`r`n", "`n")
+        if ($LASTEXITCODE -ne 0) { throw "Naming render failed for $($case.Release): $output" }
+        $documents = @($output -split '(?m)^---\n' | Where-Object { $_ -match '(?m)^kind:' })
+        $roleKind = if ($mode -eq "cluster") { "ClusterRole" } else { "Role" }
+        $resourceCount = 0
+        foreach ($document in $documents) {
+            $kind = [regex]::Match($document, '(?m)^kind: (\S+)$').Groups[1].Value
+            $name = [regex]::Match($document, '(?m)^metadata:\n  name: (\S+)$').Groups[1].Value
+            if ($kind -in @("Deployment", "Service", "ServiceAccount", "NetworkPolicy")) {
+                if ($name -ne $case.Name -or $name.Length -gt 63 -or $name.EndsWith("-")) {
+                    throw "Unexpected $kind name for $($case.Release): $name"
+                }
+                $resourceCount++
+            } elseif ($kind -in @("Role", "ClusterRole", "RoleBinding", "ClusterRoleBinding")) {
+                $workloadName = "$($case.Name)-release-ns"
+                $approvalName = "$workloadName-approve"
+                if ($name -notin @($workloadName, $approvalName)) {
+                    throw "Unexpected RBAC name: $name"
+                }
+                if ($kind.EndsWith("Binding")) {
+                    $referenceKind = if ($name -eq $approvalName) { "ClusterRole" } else { $roleKind }
+                    $reference = "roleRef:`n  apiGroup: rbac.authorization.k8s.io`n  kind: $referenceKind`n  name: $name"
+                    $subject = "subjects:`n  - kind: ServiceAccount`n    name: $($case.Name)`n    namespace: release-ns"
+                    if (-not $document.Contains($reference) -or -not $document.Contains($subject)) {
+                        throw "RBAC references do not match rendered resources: $name"
+                    }
+                }
+            }
+        }
+        if ($resourceCount -ne 4 -or -not $output.Contains("serviceAccountName: $($case.Name)`n")) {
+            throw "Missing named resources or Deployment ServiceAccount reference"
+        }
+        if (-not $output.Contains('app.kubernetes.io/name: signet') -or
+            -not $output.Contains("app.kubernetes.io/instance: `"$($case.Release)`"")) {
+            throw "Resource naming must preserve selector labels"
+        }
+    }
+}
+Write-Output "Helm resource names and cross-resource reference checks passed."
+
 $destination = Join-Path (Join-Path $PSScriptRoot "..\.verification") ("chart-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 $archive = Join-Path $destination "signet-0.2.3.tgz"

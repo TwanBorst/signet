@@ -25,6 +25,37 @@ an incompatible migration safe. Roll back binaries only when the migrated
 schema supports the old version. Back up before changing CRDs as well; Helm
 does not upgrade CRDs in `crds/`.
 
+## Chart resource names
+
+The chart uses the release name alone when it already contains the chart name
+`signet`; otherwise it appends `-signet`. For example:
+
+| Helm release | Deployment, Service, ServiceAccount and NetworkPolicy name |
+| --- | --- |
+| `signet` | `signet` |
+| `prod-signet` | `prod-signet` |
+| `signet-prod` | `signet-prod` |
+| `prod` | `prod-signet` |
+
+Names are truncated to 63 characters and trailing hyphens are removed.
+RBAC names additionally include the release namespace to distinguish
+cluster-scoped permissions for releases in different namespaces; signer
+approval RBAC also adds `-approve`. These suffixes remain even if the
+namespace equals the resource name. Deployment ServiceAccount references and
+RBAC subjects and role references use the same generated names. Pod labels,
+Deployment selectors and Service/NetworkPolicy selectors are unchanged.
+
+Earlier charts always appended the chart name, producing names such as
+`signet-signet`. Upgrading a release whose name already contains `signet`
+therefore replaces its named resources rather than renaming them in place.
+Plan a maintenance window: stop the old Deployment before upgrading to avoid
+overlapping Deployments with identical selectors, and expect Service
+connectivity to be interrupted. Update HTTPRoute backends, other external
+Service references, DNS names, monitoring targets and operational commands to
+the new names. Review rendered manifests and the Helm upgrade diff first.
+The external database, issuer resources and cert-manager-managed TLS Secrets
+are not renamed by this helper.
+
 ## Recovery, deletion and renewal
 
 Operator denial or cancellation of an already Approved CertificateRequest is
