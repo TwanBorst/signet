@@ -56,6 +56,34 @@ the new names. Review rendered manifests and the Helm upgrade diff first.
 The external database, issuer resources and cert-manager-managed TLS Secrets
 are not renamed by this helper.
 
+## OpenShift security context constraints
+
+The chart leaves `runAsUser`, `runAsGroup` and `fsGroup` unset so OpenShift's
+restricted SCC can assign IDs allowed for the namespace. On Kubernetes
+without UID injection, the image defaults to the non-root identity
+`65532:65532`. The Pod still requires non-root execution and the runtime
+default seccomp profile; the container drops all capabilities, disables
+privilege escalation and uses a read-only root filesystem.
+
+Earlier chart versions pinned UID and GID `65532` in the Pod specification.
+OpenShift can reject that UID with
+`unable to validate against any security context constraint` when it falls
+outside the namespace's allocated range. Upgrade to the corrected chart
+rather than granting the ServiceAccount `anyuid` or a privileged SCC.
+
+For admission failures, inspect the ReplicaSet events for the specific SCC
+validation reasons:
+
+```sh
+oc get events -n signet --field-selector reason=FailedCreate --sort-by=.lastTimestamp
+oc describe replicaset -n signet
+oc get namespace signet -o jsonpath='{.metadata.annotations.openshift\.io/sa\.scc\.uid-range}'
+```
+
+Replace `signet` with the release namespace. The generic SCC error can also
+indicate other restrictions; use the detailed event messages to identify
+the rejected field. The corrected chart does not create or grant an SCC.
+
 ## Recovery, deletion and renewal
 
 Operator denial or cancellation of an already Approved CertificateRequest is

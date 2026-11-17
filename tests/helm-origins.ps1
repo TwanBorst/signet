@@ -62,6 +62,13 @@ function ScopeManifest {
 }
 
 $namespaced = ScopeManifest @()
+foreach ($expected in @('runAsNonRoot: true', 'type: RuntimeDefault',
+    'allowPrivilegeEscalation: false', 'readOnlyRootFilesystem: true', 'drop: ["ALL"]')) {
+    if (-not $namespaced.Contains($expected)) { throw "Missing Pod security setting: $expected" }
+}
+if ($namespaced -match '(?m)^\s+(runAsUser|runAsGroup|fsGroup):') {
+    throw "Chart must allow OpenShift SCC admission to assign namespace-specific IDs"
+}
 foreach ($expected in @('kind: Role', 'kind: RoleBinding', 'namespace: signet',
     'resources: ["signetissuers"]', 'name: WATCH_NAMESPACE', 'value: "signet"',
     'name: DEPLOYMENT_MODE', 'value: "namespace"', '"signetissuers.signet.io/*"')) {
