@@ -159,6 +159,9 @@ CertificateRequests and update the release when changing them. The chart
 requires explicit issuer identities, an HTTPS origin, database configuration,
 trusted ingress peers, PostgreSQL egress and API-server CIDRs.
 
+See [issuer configuration](issuers.md) for templates for both issuer kinds,
+policy field behavior, and cert-manager Certificate examples.
+
 The application container performs database migrations automatically at
 startup; see [operations](operations.md) before upgrading. Helm installs CRDs
 from `crds/` on initial install but does not upgrade or delete them; manage

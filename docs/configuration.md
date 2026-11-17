@@ -28,6 +28,9 @@ PUBLIC_ORIGINS=["https://signet.example.com","https://signet.example.org"]
 AUTH_HEADER=x-auth-request-email
 ```
 
+See [issuer configuration](issuers.md) for `SignetIssuer` and
+`SignetClusterIssuer` manifests, policy fields, and Certificate references.
+
 `database.caSecretName` or `database.caConfigMap` optionally selects an existing
 CA source in the release namespace; configure only one. `database.caKey`
 selects its key (default `ca.crt`), always mounted as `/etc/signet/db-ca/ca.crt`.
