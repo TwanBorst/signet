@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -82,13 +83,19 @@ func TestMigrationsRacesAndAuditOutage(t *testing.T) {
 	if _, err := s.Pool.Exec(ctx, "UPDATE signet_schema SET checksum='changed'"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Migrate(ctx); err == nil {
-		t.Fatal("accepted changed migration")
+	if err := s.Migrate(ctx); err == nil || !strings.Contains(err.Error(), "verify checksum for migration 001_initial.sql: checksum mismatch") {
+		t.Fatalf("expected migration checksum error, got %v", err)
 	}
 	if _, err := s.Pool.Exec(ctx, "INSERT INTO signet_schema VALUES (2,'future')"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Migrate(ctx); err == nil {
-		t.Fatal("accepted newer migration")
+	if err := s.Migrate(ctx); err == nil || !strings.Contains(err.Error(), "validate schema version: database schema version 2 is newer") {
+		t.Fatalf("expected newer schema version error, got %v", err)
+	}
+	if _, err := s.Pool.Exec(ctx, "ALTER TABLE signet_schema RENAME COLUMN version TO old_version"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Migrate(ctx); err == nil || err.Error() != "read schema version from signet_schema: PostgreSQL error (SQLSTATE 42703)" {
+		t.Fatalf("expected schema version read error with SQLSTATE, got %v", err)
 	}
 }

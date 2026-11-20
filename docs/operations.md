@@ -15,6 +15,42 @@ into an isolated database with `pg_restore`, check audit/history and exercise
 the application against the restore; document and test recovery objectives.
 Backups of the database do not replace Kubernetes Secret backups.
 
+### PostgreSQL privileges
+
+Signet uses the same PostgreSQL login for startup migrations and normal
+operation. Use a dedicated login and schema. The login does not need
+superuser privileges, database ownership, or permission to create databases,
+roles, or schemas.
+
+| Scope | Required access |
+| --- | --- |
+| Database | `LOGIN` on the role and `CONNECT` to the Signet database. |
+| Target schema | `USAGE` and `CREATE`. Keep `CREATE` after installation: Signet runs `CREATE TABLE IF NOT EXISTS signet_schema` at every startup. |
+| `signet_schema` | `SELECT` to read the version and checksum; `INSERT` to record the initial migration. |
+| `requests` | `SELECT`, `INSERT`, and `UPDATE`. |
+| `audit` | `SELECT` and `INSERT`. PostgreSQL generates `audit.id` using an identity column; Signet does not need a separate sequence grant. |
+| Advisory lock | `EXECUTE` on `pg_catalog.pg_advisory_xact_lock(bigint)` if the default `PUBLIC` grant has been revoked. |
+
+For a fresh installation, run the following as a database administrator
+connected to the `signet` database. This assumes `signet_app` is an existing
+login role; substitute your database, schema, and role names as needed.
+
+```sql
+GRANT CONNECT ON DATABASE signet TO signet_app;
+CREATE SCHEMA signet;
+GRANT USAGE, CREATE ON SCHEMA signet TO signet_app;
+ALTER ROLE signet_app IN DATABASE signet SET search_path = signet;
+```
+
+Signet uses unqualified table names. Keep the same target schema in the
+login's `search_path` across restarts and upgrades. When Signet creates the
+tables, its login owns them and no separate table grants are needed. If
+restoring into a schema where another role owns the tables, grant the table
+access listed above. A future migration that alters an existing table may
+also require ownership of that table; ordinary table grants do not confer it.
+
+### Startup migrations
+
 Each application container runs migrations on startup with a database lock so
 concurrent starts serialize them. For rolling upgrades, deploy only versions
 whose old and new binaries are compatible with the migration: use additive
@@ -24,6 +60,13 @@ release's migration compatibility before rollout; locking alone does not make
 an incompatible migration safe. Roll back binaries only when the migrated
 schema supports the old version. Back up before changing CRDs as well; Helm
 does not upgrade CRDs in `crds/`.
+
+When a migration fails at startup, the `reason` field identifies the failed
+step and, where applicable, the migration file and PostgreSQL SQLSTATE. For
+example, `ensure signet_schema migration table exists: insufficient database
+privileges (SQLSTATE 42501)` points to the migration role's schema permissions.
+If acquiring a connection fails without a SQLSTATE, check database reachability
+and TLS configuration. Raw driver and server error text is not logged.
 
 ## Chart resource names
 

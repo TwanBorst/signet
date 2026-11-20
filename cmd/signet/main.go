@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -48,7 +49,7 @@ func run() error {
 	err = db.Migrate(migrationCtx)
 	cancel()
 	if err != nil {
-		return errors.New("database migration failed; check schema, connectivity and migration role permissions")
+		return fmt.Errorf("database migration failed: %w", err)
 	}
 	origins, err := publicOrigins(os.Getenv("PUBLIC_ORIGIN"), os.Getenv("PUBLIC_ORIGINS"))
 	if err != nil {

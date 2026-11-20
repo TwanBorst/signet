@@ -3,7 +3,8 @@
 Install cert-manager 1.20 or newer, a cluster with a NetworkPolicy-enforcing
 CNI, and an external PostgreSQL database. The database is independent of the
 release and retains issuance history and audit records indefinitely. Provision
-its least-privilege role and an external Secret in Signet's namespace with a
+its [least-privilege PostgreSQL role](operations.md#postgresql-privileges) and
+an external Secret in Signet's namespace with a
 `url` key containing the connection URL, or configure individual settings and
 a password Secret as described below. `database.secretKey` can select a
 different URL key. Never put the password in Helm values.
