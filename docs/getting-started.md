@@ -21,7 +21,7 @@ Example values (replace all placeholders and use a built/published image):
 ```yaml
 image:
   repository: registry.example.com/signet
-  tag: "0.2.0"
+  tag: "1.0.1"
 database:
   secretName: signet-db
   secretKey: url
