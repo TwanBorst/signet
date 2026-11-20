@@ -95,7 +95,7 @@ func TestMigrationsRacesAndAuditOutage(t *testing.T) {
 	if _, err := s.Pool.Exec(ctx, "ALTER TABLE signet_schema RENAME COLUMN version TO old_version"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Migrate(ctx); err == nil || !strings.Contains(err.Error(), "read schema version from signet_schema: ERROR: column \"version\" does not exist (SQLSTATE 42703)") {
+	if err := s.Migrate(ctx); err == nil || err.Error() != "read schema version from signet_schema: PostgreSQL error (SQLSTATE 42703)" {
 		t.Fatalf("expected schema version read error with SQLSTATE, got %v", err)
 	}
 }

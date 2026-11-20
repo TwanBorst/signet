@@ -63,12 +63,10 @@ does not upgrade CRDs in `crds/`.
 
 When a migration fails at startup, the `reason` field identifies the failed
 step and, where applicable, the migration file and PostgreSQL SQLSTATE. For
-example, `ensure signet_schema migration table exists: ERROR: permission denied
-for schema public (SQLSTATE 42501)` points to the migration role's schema permissions.
-The underlying driver or PostgreSQL error is included, along with available
-server details and hints; configured database passwords are redacted. These
-diagnostics may contain database names, usernames, schema names, or other
-server-provided information, so protect access to application logs.
+example, `ensure signet_schema migration table exists: insufficient database
+privileges (SQLSTATE 42501)` points to the migration role's schema permissions.
+If acquiring a connection fails without a SQLSTATE, check database reachability
+and TLS configuration. Raw driver and server error text is not logged.
 
 ## Chart resource names
 
