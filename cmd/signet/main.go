@@ -11,15 +11,18 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	api "github.com/TwanBorst/signet/api/v1alpha1"
 	"github.com/TwanBorst/signet/internal/controller"
 	"github.com/TwanBorst/signet/internal/httpapi"
 	"github.com/TwanBorst/signet/internal/store"
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -41,7 +44,7 @@ func run() error {
 	config.ConnConfig.ConnectTimeout = 10 * time.Second
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
-		return errors.New("database initialization failed (credentials suppressed)")
+		return databaseError("database initialization failed", err, config.ConnConfig.Password)
 	}
 	defer pool.Close()
 	db := &store.Store{Pool: pool}
@@ -49,7 +52,7 @@ func run() error {
 	err = db.Migrate(migrationCtx)
 	cancel()
 	if err != nil {
-		return fmt.Errorf("database migration failed: %w", err)
+		return databaseError("database migration failed", err, config.ConnConfig.Password)
 	}
 	origins, err := publicOrigins(os.Getenv("PUBLIC_ORIGIN"), os.Getenv("PUBLIC_ORIGINS"))
 	if err != nil {
@@ -134,12 +137,111 @@ func databaseConfig() (*pgxpool.Config, error) {
 	}
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, errors.New("invalid database configuration (value suppressed)")
+		return nil, databaseError("invalid database configuration", err, password)
 	}
 	if config.ConnConfig.TLSConfig == nil {
 		return nil, errors.New("database requires sslmode=verify-full with a trusted database CA")
 	}
 	return config, nil
+}
+
+func databaseError(action string, err error, passwords ...string) error {
+	message := action + ": " + err.Error()
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		for _, field := range []struct{ name, value string }{
+			{"detail", pgErr.Detail}, {"hint", pgErr.Hint}, {"where", pgErr.Where},
+			{"schema", pgErr.SchemaName}, {"table", pgErr.TableName}, {"column", pgErr.ColumnName},
+			{"data type", pgErr.DataTypeName}, {"constraint", pgErr.ConstraintName},
+			{"internal query", pgErr.InternalQuery}, {"file", pgErr.File}, {"routine", pgErr.Routine},
+		} {
+			if field.value != "" {
+				message += "; " + field.name + ": " + field.value
+			}
+		}
+		if pgErr.Position != 0 {
+			message += fmt.Sprintf("; position: %d", pgErr.Position)
+		}
+		if pgErr.InternalPosition != 0 {
+			message += fmt.Sprintf("; internal position: %d", pgErr.InternalPosition)
+		}
+		if pgErr.Line != 0 {
+			message += fmt.Sprintf("; line: %d", pgErr.Line)
+		}
+	}
+	passwords = append(passwords, os.Getenv("DATABASE_PASSWORD"), os.Getenv("PGPASSWORD"))
+	databaseURL := os.Getenv("DATABASE_URL")
+	if u, parseErr := url.Parse(databaseURL); parseErr == nil {
+		if u.User != nil {
+			password, _ := u.User.Password()
+			passwords = append(passwords, password)
+			if _, authority, ok := strings.Cut(databaseURL, "://"); ok {
+				authority = strings.SplitN(authority, "/", 2)[0]
+				authority = strings.SplitN(authority, "?", 2)[0]
+				authority = strings.SplitN(authority, "#", 2)[0]
+				if at := strings.LastIndex(authority, "@"); at >= 0 {
+					if _, raw, ok := strings.Cut(authority[:at], ":"); ok {
+						passwords = append(passwords, raw)
+					}
+				}
+			}
+		}
+		for _, part := range strings.Split(u.RawQuery, "&") {
+			key, value, ok := strings.Cut(part, "=")
+			decodedKey, keyErr := url.QueryUnescape(key)
+			decodedValue, valueErr := url.QueryUnescape(value)
+			if ok && keyErr == nil && valueErr == nil && decodedKey == "password" {
+				passwords = append(passwords, value, decodedValue)
+			}
+		}
+	}
+	var redactions []string
+	for _, password := range passwords {
+		if password == "" {
+			continue
+		}
+		quoted := strconv.Quote(password)
+		for _, value := range []string{
+			url.QueryEscape(password), url.PathEscape(password),
+			strings.TrimPrefix(url.UserPassword("", password).String(), ":"),
+			strings.ReplaceAll(password, "'", "''"), quoted[1 : len(quoted)-1],
+			password,
+		} {
+			if value != "" {
+				redactions = append(redactions, value)
+			}
+		}
+	}
+	sort.Slice(redactions, func(i, j int) bool { return len(redactions[i]) > len(redactions[j]) })
+	if len(redactions) > 0 {
+		patterns := make([]string, 0, len(redactions))
+		for _, value := range redactions {
+			patterns = append(patterns, passwordPattern(value))
+		}
+		message = regexp.MustCompile(strings.Join(patterns, "|")).ReplaceAllLiteralString(message, "[REDACTED]")
+	}
+	return errors.New(message)
+}
+
+func passwordPattern(value string) string {
+	var pattern strings.Builder
+	for i := 0; i < len(value); {
+		if value[i] == '%' && i+2 < len(value) && isHex(value[i+1]) && isHex(value[i+2]) {
+			pattern.WriteString("(?i:")
+			pattern.WriteString(value[i : i+3])
+			pattern.WriteByte(')')
+			i += 3
+		} else {
+			r, size := utf8.DecodeRuneInString(value[i:])
+			pattern.WriteString(regexp.QuoteMeta(string(r)))
+			i += size
+		}
+	}
+	return pattern.String()
+}
+
+func isHex(b byte) bool {
+	return b >= '0' && b <= '9' || b >= 'a' && b <= 'f' || b >= 'A' && b <= 'F'
 }
 
 func publicOrigins(single, multiple string) ([]string, error) {

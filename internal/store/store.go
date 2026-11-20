@@ -8,13 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"time"
 
 	api "github.com/TwanBorst/signet/api/v1alpha1"
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -69,27 +67,8 @@ type migrationError struct {
 	cause  error
 }
 
-var sqlStatePattern = regexp.MustCompile(`^[0-9A-Z]{5}$`)
-
 func (e *migrationError) Error() string {
-	// Database and driver error text can contain connection details or values.
-	var pgErr *pgconn.PgError
-	switch {
-	case errors.As(e.cause, &pgErr) && sqlStatePattern.MatchString(pgErr.Code):
-		switch pgErr.Code {
-		case "42501":
-			return e.action + ": insufficient database privileges (SQLSTATE 42501)"
-		case "28P01":
-			return e.action + ": database password authentication failed (SQLSTATE 28P01)"
-		default:
-			return e.action + ": PostgreSQL error (SQLSTATE " + pgErr.Code + ")"
-		}
-	case errors.Is(e.cause, context.DeadlineExceeded), pgconn.Timeout(e.cause):
-		return e.action + ": timed out"
-	case errors.Is(e.cause, context.Canceled):
-		return e.action + ": canceled"
-	}
-	return e.action + ": underlying error details suppressed"
+	return e.action + ": " + e.cause.Error()
 }
 
 func (e *migrationError) Unwrap() error { return e.cause }

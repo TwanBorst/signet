@@ -6,14 +6,48 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
+	"fmt"
 	"math/big"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestDatabaseErrorDiagnostics(t *testing.T) {
+	password := "secret:@/?#%"
+	t.Setenv("DATABASE_URL", "postgres://operator:secret%3a%40%2f%3f%23%25@db/signet?sslmode=verify-full&password=other%2fsecret")
+	t.Setenv("DATABASE_PASSWORD", "")
+	t.Setenv("PGPASSWORD", "")
+	pgErr := &pgconn.PgError{
+		Severity: "ERROR", Code: "42501", Message: "permission denied for schema public",
+		Detail: "role operator cannot use public; " + password,
+		Hint:   "grant CREATE", SchemaName: "public", TableName: "requests",
+		Where: "other/secret", InternalQuery: "SELECT 1", Position: 3,
+	}
+	err := databaseError("database migration failed", fmt.Errorf("apply migration: %w", pgErr), password)
+	got := err.Error()
+	for _, want := range []string{"apply migration", "permission denied for schema public", "SQLSTATE 42501", "role operator cannot use public", "hint: grant CREATE", "schema: public", "table: requests", "internal query: SELECT 1", "position: 3", "[REDACTED]"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+	for _, secret := range []string{password, url.QueryEscape(password), "other/secret"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("error contains password %q: %s", secret, got)
+		}
+	}
+	err = databaseError("connection failed", errors.New("db.example.com: "+url.QueryEscape(password)+" secret%3a%40%2f%3f%23%25 secret%3A%40%2f%3F%23%25 other%2fsecret"), password)
+	if !strings.Contains(err.Error(), "db.example.com") || strings.Contains(err.Error(), "secret%3") || strings.Contains(err.Error(), "other%2fsecret") || strings.Contains(err.Error(), url.QueryEscape(password)) {
+		t.Fatalf("unexpected connection diagnostic: %s", err)
+	}
+}
 
 func TestDeploymentScope(t *testing.T) {
 	for _, tc := range []struct {
@@ -101,8 +135,15 @@ func TestDatabaseConfig(t *testing.T) {
 		}
 		t.Setenv("DATABASE_SSLROOTCERT", "/nonexistent/ca.crt")
 		_, err = databaseConfig()
-		if err == nil || strings.Contains(err.Error(), "sensitive-password") {
-			t.Fatal("expected a sanitized configuration error")
+		if err == nil || strings.Contains(err.Error(), "sensitive-password") || !strings.Contains(err.Error(), "/nonexistent/ca.crt") {
+			t.Fatalf("expected a sanitized configuration error identifying the CA file: %v", err)
+		}
+	})
+	t.Run("URL password is redacted in configuration errors", func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "postgres://operator:secret%3A%40%2F%3F%23%25@db.example.com/signet?sslmode=verify-full&sslrootcert=/nonexistent/ca.crt")
+		_, err := databaseConfig()
+		if err == nil || !strings.Contains(err.Error(), "/nonexistent/ca.crt") || strings.Contains(err.Error(), "secret%3A%40%2F%3F%23%25") || strings.Contains(err.Error(), "secret:@/?#%") {
+			t.Fatalf("expected a sanitized URL configuration error identifying the CA file: %v", err)
 		}
 	})
 	t.Run("individual settings use configured CA", func(t *testing.T) {
