@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	api "github.com/TwanBorst/signet/api/v1alpha1"
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -62,50 +64,88 @@ type ActionError struct {
 func (e *ActionError) Error() string          { return e.Message }
 func Reject(status int, message string) error { return &ActionError{status, message} }
 
+type migrationError struct {
+	action string
+	cause  error
+}
+
+var sqlStatePattern = regexp.MustCompile(`^[0-9A-Z]{5}$`)
+
+func (e *migrationError) Error() string {
+	// Database and driver error text can contain connection details or values.
+	var pgErr *pgconn.PgError
+	switch {
+	case errors.As(e.cause, &pgErr) && sqlStatePattern.MatchString(pgErr.Code):
+		switch pgErr.Code {
+		case "42501":
+			return e.action + ": insufficient database privileges (SQLSTATE 42501)"
+		case "28P01":
+			return e.action + ": database password authentication failed (SQLSTATE 28P01)"
+		default:
+			return e.action + ": PostgreSQL error (SQLSTATE " + pgErr.Code + ")"
+		}
+	case errors.Is(e.cause, context.DeadlineExceeded), pgconn.Timeout(e.cause):
+		return e.action + ": timed out"
+	case errors.Is(e.cause, context.Canceled):
+		return e.action + ": canceled"
+	}
+	return e.action + ": underlying error details suppressed"
+}
+
+func (e *migrationError) Unwrap() error { return e.cause }
+
 func (s *Store) Migrate(ctx context.Context) error {
-	tx, err := s.Pool.Begin(ctx)
+	conn, err := s.Pool.Acquire(ctx)
 	if err != nil {
-		return err
+		return &migrationError{"acquire database connection for migrations", err}
+	}
+	defer conn.Release()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return &migrationError{"begin migration transaction", err}
 	}
 	defer tx.Rollback(ctx)
 	// Transaction-scoped lock serializes all database-using replicas, including
 	// first creation of the migration table. DDL and version commit together.
 	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(731924018)"); err != nil {
-		return err
+		return &migrationError{"acquire database migration lock", err}
 	}
 	if _, err = tx.Exec(ctx, "CREATE TABLE IF NOT EXISTS signet_schema(version integer PRIMARY KEY, checksum text NOT NULL)"); err != nil {
-		return err
+		return &migrationError{"ensure signet_schema migration table exists", err}
 	}
 	var latest int
 	if err = tx.QueryRow(ctx, "SELECT COALESCE(max(version),0) FROM signet_schema").Scan(&latest); err != nil {
-		return err
+		return &migrationError{"read schema version from signet_schema", err}
 	}
 	if latest > 1 {
-		return errors.New("database schema is newer than this binary")
+		return fmt.Errorf("validate schema version: database schema version %d is newer than this binary (supports version 1)", latest)
 	}
 	sql, err := migrations.ReadFile("migrations/001_initial.sql")
 	if err != nil {
-		return err
+		return &migrationError{"read embedded migration 001_initial.sql", err}
 	}
 	hash := sha256.Sum256(sql)
 	checksum := hex.EncodeToString(hash[:])
 	if latest == 0 {
 		if _, err = tx.Exec(ctx, string(sql)); err != nil {
-			return err
+			return &migrationError{"apply migration 001_initial.sql", err}
 		}
 		if _, err = tx.Exec(ctx, "INSERT INTO signet_schema VALUES (1,$1)", checksum); err != nil {
-			return err
+			return &migrationError{"record migration 001_initial.sql in signet_schema", err}
 		}
 	} else {
 		var existing string
 		if err = tx.QueryRow(ctx, "SELECT checksum FROM signet_schema WHERE version=1").Scan(&existing); err != nil {
-			return err
+			return &migrationError{"read checksum for migration 001_initial.sql from signet_schema", err}
 		}
 		if existing != checksum {
-			return errors.New("migration checksum mismatch; do not modify applied migrations")
+			return errors.New("verify checksum for migration 001_initial.sql: checksum mismatch; do not modify applied migrations")
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return &migrationError{"commit migration transaction", err}
+	}
+	return nil
 }
 func (s *Store) Record(ctx context.Context, uid, actor, action, outcome, detail string) error {
 	_, err := s.Pool.Exec(ctx, "INSERT INTO audit(uid,actor,action,outcome,detail) VALUES($1,$2,$3,$4,$5)", uid, actor, action, outcome, detail)
